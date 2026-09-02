@@ -40,6 +40,15 @@ export default defineConfig({
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], ...launchOptions } },
-    { name: 'mobile', use: { ...devices['Pixel 7'], ...launchOptions } },
+    {
+      name: 'mobile',
+      use: { ...devices['Pixel 7'], ...launchOptions },
+      // Responsive behaviour only. The recruitment specs drive the pipeline
+      // forward through shared seeded data — screening an applicant, booking a
+      // replacement round — so running them a second time would find that work
+      // already done. Layout is what changes with the viewport; the pipeline is
+      // not, and it is covered once on desktop.
+      testMatch: '**/auth-and-access.spec.ts',
+    },
   ],
 });

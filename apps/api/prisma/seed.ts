@@ -266,9 +266,38 @@ async function main(): Promise<void> {
       phone: '+919812345673',
       source: 'whatsapp' as const,
     },
+    // Deliberately left un-screened: an applicant waiting on a screening call
+    // is the most common state on this board, so the demo should show one.
+    {
+      name: 'Ritika Bansal',
+      email: 'ritika.bansal@example.com',
+      phone: '+919812345674',
+      source: 'job_board' as const,
+    },
   ];
 
   for (const seed of candidateSeeds) {
+    // A resume is mandatory at intake, so seeded candidates carry one too —
+    // otherwise the demo data would be records the API itself would refuse.
+    // Only the metadata is created here; the object lands in storage when a
+    // real upload happens, so the download link is inert until then.
+    const resumeFileId = uuidv7();
+    await prisma.fileObject.upsert({
+      where: { storageKey: `resumes/${seed.email}/cv.pdf` },
+      update: {},
+      create: {
+        id: resumeFileId,
+        storageKey: `resumes/${seed.email}/cv.pdf`,
+        originalName: `${seed.name.replace(/ /g, '-').toLowerCase()}-cv.pdf`,
+        mimeType: 'application/pdf',
+        sizeBytes: 148_000,
+        uploadedById: users.hr!.id,
+        ownerType: 'Candidate',
+        confirmedAt: daysFromToday(-10),
+        scanStatus: 'skipped',
+      },
+    });
+
     const candidate = await prisma.candidate.upsert({
       where: { email: seed.email },
       update: {},
@@ -278,10 +307,16 @@ async function main(): Promise<void> {
         email: seed.email,
         phone: seed.phone,
         source: seed.source,
+        resumeFileId,
         status: 'active',
         poolEligible: true,
         createdById: users.hr!.id,
       },
+    });
+
+    await prisma.fileObject.update({
+      where: { id: resumeFileId },
+      data: { ownerId: candidate.id },
     });
 
     await prisma.application.upsert({
@@ -294,6 +329,108 @@ async function main(): Promise<void> {
         candidateId: candidate.id,
         positionId: seededPosition.id,
         status: 'applied',
+        createdById: users.hr!.id,
+      },
+    });
+  }
+
+  // ------------------------------------------------------- pipeline states
+  // Walks a few candidates to different stages so every Onboarding screen has
+  // something real to show rather than three empty states.
+  const applications = await prisma.application.findMany({
+    where: { positionId: seededPosition.id },
+    include: { candidate: { select: { name: true } } },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const [first, second, third] = applications;
+
+  // One screened through and booked for an interview.
+  if (first && first.status === 'applied') {
+    await prisma.application.update({
+      where: { id: first.id },
+      data: {
+        status: 'interviewing',
+        screeningOutcome: 'proceed',
+        screeningNotes: 'Strong Python and SQL, has taught undergraduates before.',
+        screenedById: users.hr!.id,
+        screenedAt: daysFromToday(-2),
+      },
+    });
+    await prisma.interview.create({
+      data: {
+        id: uuidv7(),
+        applicationId: first.id,
+        round: 1,
+        scheduledAt: new Date(daysFromToday(2).setUTCHours(4, 30, 0, 0)),
+        durationMinutes: 45,
+        meetingUrl: 'https://meet.example.com/managedops-demo',
+        interviewerId: users.interviewer!.id,
+        status: 'scheduled',
+        createdById: users.hr!.id,
+      },
+    });
+  }
+
+  // One interviewed, selected, and holding a sent offer.
+  if (second && second.status === 'applied') {
+    await prisma.application.update({
+      where: { id: second.id },
+      data: {
+        status: 'offer_stage',
+        screeningOutcome: 'proceed',
+        screenedById: users.hr!.id,
+        screenedAt: daysFromToday(-9),
+      },
+    });
+    await prisma.interview.create({
+      data: {
+        id: uuidv7(),
+        applicationId: second.id,
+        round: 1,
+        scheduledAt: new Date(daysFromToday(-5).setUTCHours(5, 0, 0, 0)),
+        interviewerId: users.interviewer!.id,
+        status: 'completed',
+        outcome: 'selected',
+        feedback: 'Excellent communicator. Explained joins and window functions clearly.',
+        conductedAt: daysFromToday(-5),
+        createdById: users.hr!.id,
+      },
+    });
+    await prisma.offer.create({
+      data: {
+        id: uuidv7(),
+        applicationId: second.id,
+        version: 1,
+        salaryAnnual: new Prisma.Decimal(780000),
+        joiningDate: dateOnly(daysFromToday(30)),
+        status: 'sent',
+        sentAt: daysFromToday(-3),
+        notes: 'Standard summer-term contract.',
+        createdById: users.hr!.id,
+      },
+    });
+  }
+
+  // One who no-showed, so the Missed tab is not empty either.
+  if (third && third.status === 'applied') {
+    await prisma.application.update({
+      where: { id: third.id },
+      data: {
+        status: 'interviewing',
+        screeningOutcome: 'proceed',
+        screenedById: users.hr!.id,
+        screenedAt: daysFromToday(-7),
+      },
+    });
+    await prisma.interview.create({
+      data: {
+        id: uuidv7(),
+        applicationId: third.id,
+        round: 1,
+        scheduledAt: new Date(daysFromToday(-4).setUTCHours(6, 0, 0, 0)),
+        interviewerId: users.interviewer!.id,
+        status: 'missed',
         createdById: users.hr!.id,
       },
     });

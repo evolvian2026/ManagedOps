@@ -4,6 +4,7 @@ import { useAuth } from '../features/auth/auth-context';
 import { LoginPage } from '../features/auth/login-page';
 import { ChangePasswordPage } from '../features/auth/change-password-page';
 import { DashboardPage } from '../features/dashboard/dashboard-page';
+import { OnboardingPage } from '../features/onboarding/onboarding-page';
 import { PlaceholderPage } from '../features/placeholder-page';
 import { AppShell } from './app-shell';
 import { LoadingState } from '../components/states';
@@ -69,11 +70,7 @@ export function AppRoutes() {
           path="onboarding"
           element={
             <RequireCapability capability="positions.read">
-              <PlaceholderPage
-                title="Onboarding"
-                phase="phase 1"
-                summary="Open positions, the interview pipeline and offer letters."
-              />
+              <OnboardingPage />
             </RequireCapability>
           }
         />

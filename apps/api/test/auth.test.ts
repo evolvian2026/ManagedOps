@@ -9,7 +9,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await harness.close();
+  // Guarded: if beforeAll failed to boot the app, this would otherwise throw a
+  // second, misleading error on top of the real one.
+  await harness?.close();
 });
 
 beforeEach(async () => {

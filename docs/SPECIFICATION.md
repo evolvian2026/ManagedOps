@@ -1193,29 +1193,51 @@ two-instance rolling deploys · notification preferences · advanced reporting �
 
 ## 16a. Build Status
 
-**Phase 0 is complete and verified** — monorepo, full data model and migrations,
-authentication, the permission layer, audit trail, file storage, notifications,
-the scheduled-job runner, the UI shell, and CI.
+**Phases 0 and 1 are complete and verified.**
+
+_Phase 0 — foundations:_ monorepo, full data model and migrations, authentication,
+the permission layer, audit trail, file storage, notifications, the scheduled-job
+runner, the UI shell, and CI.
+
+_Phase 1 — recruitment:_ projects and positions, candidates and applications,
+screening, the interview pipeline with IST reminders and archival, versioned
+offers, and the three Onboarding screens.
 
 | Check                                   | Result      |
 | --------------------------------------- | ----------- |
 | Shared contract tests                   | 109 passing |
-| API integration tests (real PostgreSQL) | 82 passing  |
-| Browser tests (desktop + mobile)        | 24 passing  |
+| API integration tests (real PostgreSQL) | 136 passing |
+| Browser tests (desktop + mobile)        | 37 passing  |
 | Typecheck, formatting, both builds      | Clean       |
 
-Three changes were made to this specification during Phase 0, each because
-building it surfaced something the document had wrong:
+### Corrections this build surfaced
 
-- **§3.2** — a Project Lead now also holds the trainer self-service capabilities,
+Phase 0:
+
+- **§3.2** — a Project Lead also holds the trainer self-service capabilities,
   scoped to their own records. A head trainer teaches, so they punch in and take
   leave like anyone else; the original matrix accidentally denied them both.
 - **§3.2** — the four self-service capabilities are withheld from every
-  administrative role. A Super Admin has no assignment to punch into and no leave
-  balance to spend, so granting them described something the product cannot do.
+  administrative role, which has no trainer profile to act on.
 - **§11.1** — the trace id is assigned by application middleware rather than by
   the HTTP logger. It is part of the error contract, so it cannot depend on the
   logging transport being mounted.
+
+Phase 1:
+
+- **§3.4** — the three-layer permission model needed a fourth rule: a scope
+  predicate is combined with a request's filters under `AND`, never merged into
+  the same object. Both were live defects. A scope naming `id` overwrote an
+  explicit `id`, so fetching another project returned _your own_ with a 200; and
+  a query parameter written after the scope overwrote it, so `?projectId=` read
+  straight past it. `scopedWhere()` now makes the scope a floor no filter can
+  raise, and the scoping suite tests both directions.
+- **§4.1** — an application moves `applied → screening → interviewing` as one
+  step when a screening outcome is recorded, because the transition table has no
+  direct `applied → interviewing` edge and a screening call legitimately does both.
+- **§4.2** — a candidate may hold only one live application at a time. Without
+  it, two projects can interview the same person in parallel without either
+  knowing.
 
 ---
 

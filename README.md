@@ -122,10 +122,21 @@ untriageable, and the client never replaces a server message with a generic one.
 
 ## Build status
 
-Phase 0 (foundations) is complete: the monorepo, the full data model and
-migrations, authentication, the permission layer, the audit trail, file storage,
+**Phase 0 (foundations)** — monorepo, full data model and migrations,
+authentication, the permission layer, the audit trail, file storage,
 notifications, the job runner, the UI shell and CI.
 
-Phases 1 to 5 add recruitment, onboarding, delivery operations, exit and
-hardening. `docs/SPECIFICATION.md` §16 has the plan. Screens whose module has
-not landed yet say so rather than showing invented data.
+**Phase 1 (recruitment)** — projects and positions, candidates and applications,
+screening, the interview pipeline with IST reminders and 30-day archival,
+versioned offers, and the three Onboarding screens: Open Positions, Interview
+Pipeline and Offer Letters.
+
+Phases 2 to 5 add onboarding, delivery operations, exit and hardening.
+`docs/SPECIFICATION.md` §16 has the plan. Screens whose module has not landed yet
+say so rather than showing invented data.
+
+| Suite                             | Count |
+| --------------------------------- | ----- |
+| Shared contracts                  | 109   |
+| API integration (real PostgreSQL) | 136   |
+| Browser (desktop + mobile)        | 37    |

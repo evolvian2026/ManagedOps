@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module.js';
 import { OPERATIONAL_TZ, SCHEDULED_JOBS, createBoss, safely } from './jobs/scheduler.js';
 import { FilesService } from './modules/files/files.service.js';
+import { InterviewJobs } from './jobs/interview-jobs.js';
 
 /**
  * The scheduled-work process.
@@ -13,20 +14,30 @@ import { FilesService } from './modules/files/files.service.js';
  * services, the same configuration — and runs from the same container image with
  * a different entrypoint, so the two can never drift apart in behaviour.
  *
- * Phase 0 wires the runner, the schedule and the orphaned-upload sweep. The
- * remaining handlers arrive with the modules that own them: interview reminders
- * in phase 1, document reminders in phase 2, attendance and leave in phase 3.
+ * Handlers arrive with the module that owns them. Document reminders land in
+ * phase 2, attendance and leave in phase 3; until then those jobs are registered
+ * but warn at boot rather than silently doing nothing.
  */
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Worker');
   const app = await NestFactory.createApplicationContext(AppModule, { bufferLogs: false });
   const config = app.get(ConfigService);
   const files = app.get(FilesService);
+  const interviewJobs = app.get(InterviewJobs);
 
   const boss = await createBoss(config.getOrThrow<string>('databaseUrl'));
   boss.on('error', (error) => logger.error({ err: error }, 'Job queue error'));
 
   const handlers: Record<string, () => Promise<void>> = {
+    'interview.reminder.daily': async () => {
+      await interviewJobs.sendDayReminders();
+    },
+    'interview.reminder.imminent': async () => {
+      await interviewJobs.sendImminentReminders();
+    },
+    'interview.archive.stale': async () => {
+      await interviewJobs.archiveStale();
+    },
     'files.cleanup.orphans': async () => {
       // Anything unattached after a day was abandoned mid-upload.
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);

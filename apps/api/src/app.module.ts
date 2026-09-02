@@ -14,6 +14,9 @@ import { FilesModule } from './modules/files/files.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { IdentityModule } from './modules/identity/identity.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
+import { ProjectsModule } from './modules/projects/projects.module.js';
+import { RecruitmentModule } from './modules/recruitment/recruitment.module.js';
+import { JobsModule } from './jobs/jobs.module.js';
 
 @Module({
   imports: [
@@ -25,6 +28,9 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     NotificationsModule,
     FilesModule,
     IdentityModule,
+    ProjectsModule,
+    RecruitmentModule,
+    JobsModule,
     HealthModule,
   ],
   providers: [
