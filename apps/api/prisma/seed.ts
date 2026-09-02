@@ -44,8 +44,8 @@ async function main(): Promise<void> {
   const staff = [
     {
       key: 'superAdmin',
-      name: 'Vishal Rathee',
-      email: 'vishal.rathee@managedops.local',
+      name: 'Anoop Dobhal',
+      email: 'anoop.dcrust@gmail.com',
       role: 'super_admin' as const,
     },
     {

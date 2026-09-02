@@ -9,7 +9,7 @@ import { expect, test, type Page } from '@playwright/test';
 const PASSWORD = process.env.SEED_PASSWORD ?? 'ManagedOps!2026';
 
 const ACCOUNTS = {
-  superAdmin: 'vishal.rathee@managedops.local',
+  superAdmin: 'anoop.dcrust@gmail.com',
   manager: 'priya.nair@managedops.local',
   hr: 'ananya.sharma@managedops.local',
   projectLead: 'karan.mehta@managedops.local',
@@ -34,7 +34,7 @@ test.describe('signing in', () => {
     await signIn(page, ACCOUNTS.superAdmin);
 
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.locator('h1')).toContainText('Vishal');
+    await expect(page.locator('h1')).toContainText('Anoop');
   });
 
   test('a failed sign-in shows what the server actually said', async ({ page }) => {
