@@ -35,6 +35,8 @@ test.describe('Running Projects', () => {
 
     const card = page.getByRole('button', { name: /Full Stack Bootcamp/ });
     await expect(card).toBeVisible();
+    // Four active trainers. A fifth finished on this project and left; counting
+    // them would put a number on the card that the roster then contradicts.
     await expect(card).toContainText('4');
     await expect(card).toContainText('trainers');
     await expect(card).toContainText('Horizon Institute of Technology');

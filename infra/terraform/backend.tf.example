@@ -1,0 +1,15 @@
+# Copy to backend.tf once the bucket and lock table exist.
+#
+# It is an example rather than the real thing because Terraform cannot create
+# the bucket it stores its own state in — that bootstrap is a one-off, done by
+# hand or by a separate tiny stack.
+
+terraform {
+  backend "s3" {
+    bucket         = "managedops-terraform-state"
+    key            = "production/terraform.tfstate"
+    region         = "ap-south-1"
+    dynamodb_table = "managedops-terraform-locks"
+    encrypt        = true
+  }
+}

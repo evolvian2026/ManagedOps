@@ -31,6 +31,7 @@ import {
 import {
   Audited,
   CurrentUser,
+  RequireAnyCapability,
   RequireCapability,
   type AuthenticatedUser,
 } from '../../common/decorators/index.js';
@@ -107,6 +108,10 @@ export class TrainersController {
   }
 
   @Post(':id/documents')
+  // Two audiences, so two capabilities: a trainer uploading their own, and HR
+  // uploading on their behalf when a scan arrives by email. Which of the two the
+  // caller is decides *whose* documents they may touch, in the service.
+  @RequireAnyCapability('trainers.upload_documents', 'trainers.verify_documents')
   @Audited('TrainerDocument')
   @ApiOperation({ summary: 'Upload or replace a document' })
   upload(

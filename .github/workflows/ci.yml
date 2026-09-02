@@ -79,10 +79,102 @@ jobs:
       - name: Build both applications
         run: pnpm --filter @managedops/api build && pnpm --filter @managedops/web build
 
+  browser:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 25
+
+    # The same real PostgreSQL: the E2E suite drives the whole chain — cookie,
+    # CSRF, guard, query scope, render — and a mocked API would exercise none
+    # of it.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: managedops
+          POSTGRES_PASSWORD: managedops
+          POSTGRES_DB: managedops_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U managedops -d managedops_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://managedops:managedops@localhost:5432/managedops_e2e?schema=public
+      JWT_ACCESS_SECRET: ci-only-secret-not-used-anywhere-else-0123456789abcdef
+      SEED_PASSWORD: ManagedOps!2026
+      WEB_BASE_URL: http://127.0.0.1:5173
+      CORS_ORIGINS: http://127.0.0.1:5173
+      E2E_BASE_URL: http://127.0.0.1:5173
+      NODE_ENV: production
+      TZ: Asia/Kolkata
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build everything
+        run: |
+          pnpm --filter @managedops/shared build
+          pnpm --filter @managedops/api exec prisma generate
+          pnpm --filter @managedops/api build
+          pnpm --filter @managedops/web build
+
+      - name: Prepare the database
+        run: |
+          pnpm --filter @managedops/api exec prisma migrate deploy
+          pnpm --filter @managedops/api exec tsx prisma/seed.ts
+
+      - name: Start the stack
+        run: |
+          node apps/api/dist/main.js > /tmp/api.log 2>&1 &
+          pnpm --filter @managedops/web exec vite preview --port 5173 --strictPort > /tmp/web.log 2>&1 &
+          # Poll rather than sleep: a fixed wait is either wasted time or a
+          # flake, depending on how loaded the runner is.
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:5173/ >/dev/null &&             curl -so /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json'               -d '{}' http://127.0.0.1:4000/api/v1/auth/login | grep -q '4' && exit 0
+            sleep 1
+          done
+          echo "the stack did not come up"; cat /tmp/api.log /tmp/web.log; exit 1
+
+      - name: Run the browser suite
+        run: pnpm test:e2e
+
+      - name: Keep the traces from a failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            test-results/
+            e2e/playwright-report/
+          retention-days: 7
+
+      - name: Server logs on failure
+        if: failure()
+        run: tail -100 /tmp/api.log /tmp/web.log
+
   images:
     name: Build container images
     runs-on: ubuntu-latest
-    needs: verify
+    needs: [verify, browser]
     # Only publish from main; a pull request proves the images build without
     # pushing anything.
     timeout-minutes: 25

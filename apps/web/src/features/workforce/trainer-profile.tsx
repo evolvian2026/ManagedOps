@@ -7,6 +7,7 @@ import { formatDate, formatInr, humanise } from '../onboarding/format';
 import { DocumentChecklist } from './document-checklist';
 import { useResendCredentials, useTrainer, useTrainerDocuments, type TrainerDetail } from './api';
 import { TRAINER_TONE } from './running-projects';
+import { StartDeboardingDialog } from '../exit/deboarding';
 import {
   AttendanceTab,
   ClaimsTab,
@@ -36,6 +37,7 @@ type Tab =
  */
 export function TrainerProfile({ trainerId, onBack }: { trainerId: string; onBack: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
+  const [deboarding, setDeboarding] = useState(false);
   const { can } = useAuth();
   const trainer = useTrainer(trainerId);
   const documents = useTrainerDocuments(can('trainers.read_documents') ? trainerId : null);
@@ -61,11 +63,27 @@ export function TrainerProfile({ trainerId, onBack }: { trainerId: string; onBac
         title={trainer.data.user.name}
         description={`${trainer.data.employeeCode} · ${humanise(trainer.data.status)}`}
         actions={
-          <Badge tone={TRAINER_TONE[trainer.data.status] ?? 'neutral'}>
-            {humanise(trainer.data.status)}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge tone={TRAINER_TONE[trainer.data.status] ?? 'neutral'}>
+              {humanise(trainer.data.status)}
+            </Badge>
+            {can('deboarding.manage') && activeAssignmentId && trainer.data.status === 'active' ? (
+              <Button variant="secondary" onClick={() => setDeboarding(true)}>
+                Start deboarding
+              </Button>
+            ) : null}
+          </div>
         }
       />
+
+      {activeAssignmentId ? (
+        <StartDeboardingDialog
+          assignmentId={activeAssignmentId}
+          trainerName={trainer.data.user.name}
+          open={deboarding}
+          onClose={() => setDeboarding(false)}
+        />
+      ) : null}
 
       <div className="mb-5">
         <Tabs

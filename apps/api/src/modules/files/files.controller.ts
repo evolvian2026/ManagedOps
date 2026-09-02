@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { uuidSchema } from '@managedops/shared';
-import { Audited, CurrentUser } from '../../common/decorators/index.js';
+import { Audited, CurrentUser, type AuthenticatedUser } from '../../common/decorators/index.js';
 import { validate } from '../../common/pipes/zod-validation.pipe.js';
 import { FilesService } from './files.service.js';
 import { confirmUploadSchema, uploadUrlSchema, type UploadUrlInput } from './file-policy.js';
@@ -35,8 +35,10 @@ export class FilesController {
   }
 
   @Get(':id/download-url')
-  @ApiOperation({ summary: 'Get a short-lived download URL; the access is audited' })
-  download(@Param('id', validate(uuidSchema)) id: string, @CurrentUser('userId') userId: string) {
-    return this.files.createDownloadUrl(id, userId);
+  @ApiOperation({
+    summary: 'Get a short-lived download URL, if the caller may read what it belongs to',
+  })
+  download(@Param('id', validate(uuidSchema)) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.files.createDownloadUrl(id, user);
   }
 }

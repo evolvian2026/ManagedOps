@@ -1181,7 +1181,7 @@ Covered in full in §5.2.
 | **5 — Hardening & deploy**     | E2E suite, permission matrix tests, security pass, Terraform, staging, runbooks                             | 1.5 weeks |
 
 **Total: ~10.5 engineer-weeks.** Phases 0–2 produce a demonstrable end-to-end hire; each phase ends
-with tests green and the stack deployable.
+with tests green and the stack deployable. All five are complete — see §16a.
 
 ### Deferred to v1.1+
 
@@ -1193,7 +1193,7 @@ two-instance rolling deploys · notification preferences · advanced reporting �
 
 ## 16a. Build Status
 
-**Phases 0 to 3 are complete and verified.**
+**All five phases are complete and verified.**
 
 _Phase 0 — foundations:_ monorepo, full data model and migrations, authentication,
 the permission layer, audit trail, file storage, notifications, the scheduled-job
@@ -1212,12 +1212,22 @@ corrections, leave with balances and escalation, the daily log, deliverables,
 the asset register, reimbursements with a two-tier limit, flags, and the
 trainer's own screens alongside the approver's queue.
 
+_Phase 4 — exit and re-use:_ deboarding with asset reconciliation and the F&F
+settlement, the Talent Pool as a derived query, role-shaped dashboards, and CSV
+export on the major lists.
+
+_Phase 5 — hardening and deployment:_ the executable permission matrix across
+every route, the file-access security pass, the Audit Log and Users screens,
+Terraform for the whole estate, four runbooks, and the browser suite in CI.
+
 | Check                                   | Result      |
 | --------------------------------------- | ----------- |
 | Shared contract tests                   | 133 passing |
-| API integration tests (real PostgreSQL) | 222 passing |
-| Browser tests (desktop + mobile)        | 81 passing  |
+| API integration tests (real PostgreSQL) | 505 passing |
+| Browser tests (desktop + mobile)        | 97 passing  |
 | Typecheck, formatting, both builds      | Clean       |
+
+Every screen in §9.4 and §9.5 is implemented. There are no placeholders left.
 
 ### Corrections this build surfaced
 
@@ -1295,6 +1305,42 @@ Phase 3:
   alternative, a parallel `/mine` route per resource, duplicates the pagination
   and filtering of the endpoint it shadows, and the duplicate is where the scope
   eventually gets forgotten.
+
+Phase 4:
+
+- **§4.10** — `assetsReconciled` is derived from the register, never accepted
+  from the client. A tick saying the laptop came back is worth nothing next to a
+  row saying it did not, and the refusal names the specific items rather than
+  only declining.
+- **§4.11** — the pool shows the rejection reason, not the screening notes. The
+  reason is the field §4.1 made mandatory precisely so a pool entry explains
+  itself; the notes are the internal record of the call.
+- **§3.2** — `deboarding.read` is removed from the Trainer grant. Nothing shows
+  a trainer their own exit checklist, and a capability no screen serves only put
+  an administrator's queue in their sidebar.
+- **§9.4** — a project card counts _active_ assignments. Counting every
+  assignment ever made put "5 trainers" on a card whose roster then listed four.
+
+Phase 5, the security pass:
+
+- **§10.3 — the serious one.** `GET /files/:id/download-url` authorised nothing
+  beyond "is signed in", and the document checklist handed every file id to
+  anyone who could read the trainer's row. A Project Lead — deliberately denied
+  `trainers.read_documents` — could therefore open a colleague's Aadhaar scan
+  using an id the API had just given them. An unguessable identifier is not
+  authorisation. Downloads are now authorised against the record the file
+  belongs to, and the id is withheld from a caller who may not open it, so the
+  defence does not live in one place.
+- **§13.2** — the permission suite now walks the container rather than a list:
+  every controller handler must declare a capability, be `@Public()`, or be
+  named as intentionally open with a reason. A route added tomorrow is covered
+  without anybody remembering to come back to the test.
+- **§8.1** — `POST /trainers/:id/documents` declared no capability at all. The
+  service authorised it correctly, but the guard had nothing to say; it now
+  declares both audiences explicitly.
+- **§2.5** — CSV escaping is shared and neutralises formula injection. The
+  previous per-controller escape quoted commas and nothing else, so a field
+  beginning with `=` was executed by whatever spreadsheet opened the export.
 
 ---
 

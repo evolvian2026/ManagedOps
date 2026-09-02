@@ -18,6 +18,7 @@ import { ProjectsModule } from './modules/projects/projects.module.js';
 import { RecruitmentModule } from './modules/recruitment/recruitment.module.js';
 import { WorkforceModule } from './modules/workforce/workforce.module.js';
 import { OperationsModule } from './modules/operations/operations.module.js';
+import { ExitModule } from './modules/exit/exit.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
 
 @Module({
@@ -34,6 +35,7 @@ import { JobsModule } from './jobs/jobs.module.js';
     RecruitmentModule,
     WorkforceModule,
     OperationsModule,
+    ExitModule,
     JobsModule,
     HealthModule,
   ],

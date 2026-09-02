@@ -36,7 +36,9 @@ test.describe('Open Positions', () => {
 
     const card = page.getByRole('button', { name: /Data Analytics Trainer/ });
     await expect(card).toBeVisible();
-    await expect(card).toContainText('4');
+    // Five seeded applicants: four in the pipeline and one screened out, who is
+    // still an applicant to this position and now sits in the Talent Pool.
+    await expect(card).toContainText('5');
     await expect(card).toContainText('applicants');
   });
 

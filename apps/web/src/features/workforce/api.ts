@@ -57,6 +57,9 @@ export interface TrainerDocumentRow {
   docType: TrainerDocumentType;
   status: DocumentStatus;
   lastFour: string | null;
+  /** Whether a document was uploaded — answered even when the id is withheld. */
+  hasFile: boolean;
+  /** Null when the caller may see the row but not open the document itself. */
   fileId: string | null;
   rejectReason: string | null;
   verifiedAt: string | null;

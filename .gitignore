@@ -29,3 +29,7 @@ infra/terraform/.terraform/
 # Playwright
 e2e/test-results/
 e2e/playwright-report/
+
+# Terraform variable files name the network this runs in.
+infra/terraform/env/*.tfvars
+infra/terraform/backend.tf

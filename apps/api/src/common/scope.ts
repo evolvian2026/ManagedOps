@@ -262,3 +262,10 @@ export function reimbursementScope(
 export function ownAssignmentFilter(user: AuthenticatedUser) {
   return user.trainerId ? { assignment: { trainerId: user.trainerId } } : MATCH_NOTHING;
 }
+
+export function deboardingScope(
+  user: AuthenticatedUser,
+  capability: Capability = 'deboarding.read',
+) {
+  return throughAssignment(user, capability);
+}

@@ -227,6 +227,15 @@ const PROJECT_LEAD: Grant = {
   'reimbursements.submit': 'own',
 };
 
+/**
+ * A trainer's own working life, and nothing else.
+ *
+ * `deboarding.read` is deliberately absent. Nothing in the product shows a
+ * trainer their own exit checklist, and a capability no screen serves buys
+ * nothing except a "Deboarding" entry in their sidebar that opens an
+ * administrator's queue. If a trainer-facing exit summary is ever built, the
+ * capability comes back with the screen.
+ */
 const TRAINER: Grant = {
   'trainers.read': 'own',
   'trainers.read_salary': 'own',
@@ -241,7 +250,6 @@ const TRAINER: Grant = {
   'leave.request': 'own',
   'assets.read': 'own',
   'reimbursements.submit': 'own',
-  'deboarding.read': 'own',
 };
 
 export const PERMISSIONS: Readonly<Record<Role, Grant>> = {

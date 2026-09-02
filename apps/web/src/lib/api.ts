@@ -175,8 +175,32 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return (await response.json()) as T;
 }
 
+/**
+ * A binary response — a CSV export — through the same auth and refresh path.
+ *
+ * `request` parses JSON, which a CSV is not, so this stops one step earlier. It
+ * still retries once after a refresh, because an export is exactly the kind of
+ * long-idle click that finds an expired access token.
+ */
+export async function requestBlob(path: string): Promise<Blob> {
+  let response = await rawRequest(path, {});
+
+  if (response.status === 401) {
+    if (await resumeSession()) {
+      response = await rawRequest(path, {});
+    } else {
+      accessToken = null;
+      onSessionLost?.();
+    }
+  }
+
+  if (!response.ok) throw new ApiError(await toProblem(response), response.status);
+  return response.blob();
+}
+
 export const api = {
   get: <T>(path: string, signal?: AbortSignal) => request<T>(path, { signal }),
+  blob: (path: string) => requestBlob(path),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),

@@ -1,0 +1,121 @@
+#!/bin/bash
+# Bootstraps the ManagedOps host: Docker, the CloudWatch agent, and the compose
+# file the deploy pipeline then drives. Secrets are fetched at boot rather than
+# baked in, so rotating one is a restart, not a rebuild.
+set -euo pipefail
+
+dnf update -y
+dnf install -y docker amazon-cloudwatch-agent
+systemctl enable --now docker
+
+install -d -m 0755 /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+install -d -m 0750 /opt/managedops
+
+# The environment file is written 0600 and owned by root: it holds the database
+# URL and the signing key, and a world-readable /opt is how those escape.
+write_env() {
+  local app db
+  app=$(aws secretsmanager get-secret-value --region '${region}' \
+    --secret-id '${app_secret_arn}' --query SecretString --output text)
+  db=$(aws secretsmanager get-secret-value --region '${region}' \
+    --secret-id '${db_secret_arn}' --query SecretString --output text)
+
+  {
+    echo "NODE_ENV=production"
+    echo "TZ=Asia/Kolkata"
+    echo "COOKIE_SECURE=true"
+    echo "WEB_BASE_URL=https://${domain_name}"
+    echo "CORS_ORIGINS=https://${domain_name}"
+    echo "S3_BUCKET=${bucket}"
+    echo "S3_REGION=${region}"
+    echo "MAIL_FROM=${mail_from_address}"
+    echo "$db" | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(f"{k}={v}") for k,v in d.items()]'
+    echo "$app" | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(f"{k}={v}") for k,v in d.items()]'
+  } > /opt/managedops/.env
+
+  chmod 0600 /opt/managedops/.env
+}
+
+write_env
+
+# Re-fetch on every boot, so a rotated secret takes effect on restart.
+cat > /etc/systemd/system/managedops-env.service <<'UNIT'
+[Unit]
+Description=Refresh ManagedOps environment from Secrets Manager
+Before=managedops.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/managedops-refresh-env
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+cat > /usr/local/bin/managedops-refresh-env <<'REFRESH'
+#!/bin/bash
+set -euo pipefail
+exec /var/lib/cloud/instance/scripts/part-001 --env-only
+REFRESH
+chmod +x /usr/local/bin/managedops-refresh-env
+
+cat > /etc/systemd/system/managedops.service <<'UNIT'
+[Unit]
+Description=ManagedOps
+Requires=docker.service managedops-env.service
+After=docker.service managedops-env.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/managedops
+ExecStart=/usr/bin/docker compose --env-file /opt/managedops/.env up -d
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable managedops-env.service managedops.service
+
+# Pino writes JSON to stdout; the agent ships it verbatim so CloudWatch Insights
+# can query the fields rather than a regex against a rendered line.
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<AGENT
+{
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/lib/docker/containers/*/*-json.log",
+            "log_group_name": "${log_group}",
+            "log_stream_name": "{instance_id}",
+            "timezone": "UTC"
+          }
+        ]
+      }
+    }
+  },
+  "metrics": {
+    "append_dimensions": { "InstanceId": "$${aws:InstanceId}" },
+    "metrics_collected": {
+      "disk": { "measurement": ["used_percent"], "resources": ["/"] },
+      "mem": { "measurement": ["mem_used_percent"] }
+    }
+  }
+}
+AGENT
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+# The compose file and images arrive with the first deploy; the host is ready
+# for one now.
+echo "ManagedOps host bootstrapped at $(date -Is)" > /opt/managedops/BOOTSTRAPPED

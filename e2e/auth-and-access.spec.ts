@@ -138,8 +138,14 @@ test.describe('the dashboard', () => {
   });
 
   test('shows an explanatory empty state rather than a blank panel', async ({ page }) => {
-    await signIn(page, ACCOUNTS.manager);
-    await expect(page.getByText('Nothing needs your attention')).toBeVisible();
+    await signIn(page, ACCOUNTS.superAdmin);
+
+    // Nobody has sent this account a notification, so the panel has nothing to
+    // list. An empty panel that says why beats a blank rectangle — which is the
+    // rule this checks, wherever the emptiness happens to be.
+    const notifications = page.getByRole('region', { name: 'Recent notifications' });
+    await expect(notifications).toContainText('Nothing yet');
+    await expect(notifications).toContainText('Reminders and decisions about your work land here.');
   });
 });
 

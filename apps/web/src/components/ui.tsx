@@ -125,7 +125,9 @@ export function Card({
   actions?: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-line bg-surface">
+    // A titled <section> is only a landmark once it has an accessible name; an
+    // unnamed one is skipped by a screen reader's region list entirely.
+    <section aria-label={title} className="rounded-lg border border-line bg-surface">
       {title ? (
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>

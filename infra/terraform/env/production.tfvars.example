@@ -1,0 +1,20 @@
+# Copy to production.tfvars and fill in. The real file is git-ignored: it names
+# the network this runs in, which is not information a public repository needs.
+
+environment = "production"
+region      = "ap-south-1"
+
+vpc_id             = "vpc-REPLACE"
+public_subnet_ids  = ["subnet-REPLACE-a"]
+private_subnet_ids = ["subnet-REPLACE-a", "subnet-REPLACE-b"]
+
+domain_name       = "managedops.example.com"
+mail_from_address = "ManagedOps <no-reply@managedops.example.com>"
+alarm_email       = "ops@example.com"
+
+instance_type        = "t3.medium"
+db_instance_class    = "db.t4g.micro"
+db_allocated_storage = 20
+
+# Empty on purpose. Deploys and shells go through SSM Session Manager.
+ssh_ingress_cidrs = []

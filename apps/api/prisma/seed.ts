@@ -851,6 +851,172 @@ async function main(): Promise<void> {
     }
   }
 
+  // One applicant screened out with a recorded reason, so the Talent Pool has a
+  // candidate as well as a past trainer — and the reason it shows is the one the
+  // rejection carried, not the internal notes from the call. Deliberately a
+  // candidate of her own rather than one of the four on the board, so the
+  // recruitment demo keeps its pipeline intact.
+  const rejectedEmail = 'priyanka.rane@example.com';
+  const rejectedResume = await prisma.fileObject.upsert({
+    where: { storageKey: `resumes/${rejectedEmail}/cv.pdf` },
+    update: {},
+    create: {
+      id: uuidv7(),
+      storageKey: `resumes/${rejectedEmail}/cv.pdf`,
+      originalName: 'priyanka-rane-cv.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 132_000,
+      uploadedById: users.hr!.id,
+      ownerType: 'Candidate',
+      confirmedAt: daysFromToday(-30),
+      scanStatus: 'skipped',
+    },
+  });
+
+  const rejected = await prisma.candidate.upsert({
+    where: { email: rejectedEmail },
+    update: {},
+    create: {
+      id: uuidv7(),
+      name: 'Priyanka Rane',
+      email: rejectedEmail,
+      phone: '+919812345680',
+      source: 'job_board',
+      resumeFileId: rejectedResume.id,
+      status: 'active',
+      poolEligible: true,
+      createdById: users.hr!.id,
+    },
+  });
+  await prisma.fileObject.update({
+    where: { id: rejectedResume.id },
+    data: { ownerId: rejected.id },
+  });
+
+  const rejectedApplication = await prisma.application.findUnique({
+    where: {
+      candidateId_positionId: { candidateId: rejected.id, positionId: seededPosition.id },
+    },
+  });
+  if (!rejectedApplication) {
+    await prisma.application.create({
+      data: {
+        id: uuidv7(),
+        candidateId: rejected.id,
+        positionId: seededPosition.id,
+        status: 'rejected_screening',
+        screeningNotes: 'Pleasant call; strong on fundamentals.',
+        rejectionReason: 'Wants a Java cohort; this one is React end to end.',
+        screenedAt: daysFromToday(-9),
+        screenedById: users.hr!.id,
+        createdById: users.hr!.id,
+      },
+    });
+  }
+
+  // ------------------------------------------------------- exit and re-use
+  //
+  // One person who has already left — re-hire eligible, so they surface in the
+  // Talent Pool — and one deboarding still in progress with an unreturned
+  // laptop, so the completion rule has something real to block on.
+
+  const alumnusUser = await prisma.user.upsert({
+    where: { email: 'rohit.varma@managedops.local' },
+    update: {},
+    create: {
+      id: uuidv7(),
+      name: 'Rohit Varma',
+      email: 'rohit.varma@managedops.local',
+      phone: '+919800000099',
+      role: 'trainer',
+      // Their login stopped working the day their deboarding completed.
+      status: 'disabled',
+      passwordHash,
+      mustChangePassword: false,
+    },
+  });
+
+  const alumnus = await prisma.trainer.upsert({
+    where: { userId: alumnusUser.id },
+    update: {},
+    create: {
+      id: uuidv7(),
+      userId: alumnusUser.id,
+      employeeCode: `MO-${TODAY.getUTCFullYear()}-0099`,
+      personalEmail: 'rohit.varma@managedops.local',
+      phone: '+919800000099',
+      joiningDate: dateOnly(daysFromToday(-400)),
+      salaryAnnual: new Prisma.Decimal(680000),
+      status: 'deboarded',
+      onboardingHrId: users.hr?.id,
+      rehireEligible: true,
+      documentsCompletedAt: daysFromToday(-399),
+    },
+  });
+
+  const alumnusAssignment =
+    (await prisma.assignment.findFirst({ where: { trainerId: alumnus.id } })) ??
+    (await prisma.assignment.create({
+      data: {
+        id: uuidv7(),
+        trainerId: alumnus.id,
+        projectId: project.id,
+        role: 'trainer',
+        startDate: dateOnly(daysFromToday(-400)),
+        endDate: dateOnly(daysFromToday(-120)),
+        status: 'ended',
+        leaveAllowanceDays: new Prisma.Decimal(3),
+        createdById: users.manager!.id,
+      },
+    }));
+
+  const completed = await prisma.deboarding.findUnique({
+    where: { assignmentId: alumnusAssignment.id },
+  });
+  if (!completed) {
+    await prisma.deboarding.create({
+      data: {
+        id: uuidv7(),
+        assignmentId: alumnusAssignment.id,
+        initiatedById: users.hr!.id,
+        lastWorkingDay: dateOnly(daysFromToday(-120)),
+        reason: 'Term ended and the client did not renew the second cohort.',
+        status: 'completed',
+        assetsReconciled: true,
+        fnfStatus: 'settled',
+        fnfAmount: new Prisma.Decimal('48200.00'),
+        fnfSettledAt: daysFromToday(-115),
+        feedback: 'Strong on delivery, would take again for a Java cohort.',
+        completedAt: daysFromToday(-115),
+      },
+    });
+  }
+
+  // In progress, and blocked: Karan still holds the Dell laptop.
+  if (leadAssignment) {
+    const open = await prisma.deboarding.findUnique({
+      where: { assignmentId: leadAssignment.id },
+    });
+    if (!open) {
+      await prisma.deboarding.create({
+        data: {
+          id: uuidv7(),
+          assignmentId: leadAssignment.id,
+          initiatedById: users.hr!.id,
+          lastWorkingDay: dateOnly(daysFromToday(21)),
+          reason: 'Moving to a client-side role at the end of the term.',
+          status: 'assets_pending',
+          assetsReconciled: false,
+          fnfStatus: 'pending',
+        },
+      });
+      await prisma.trainer.update({
+        where: { id: leadTrainer!.trainerId },
+        data: { status: 'deboarding' },
+      });
+    }
+  }
+
   console.log('');
   console.log('Seed complete. Sign in with any of these — all share one password.');
   console.log('');
@@ -865,7 +1031,8 @@ async function main(): Promise<void> {
   console.log('');
   console.log(
     `  ${trainers.length} trainers on "${project.name}", ` +
-      `${candidateSeeds.length} candidates applied to "${seededPosition.title}".`,
+      `${candidateSeeds.length} candidates applied to "${seededPosition.title}", ` +
+      `1 past trainer in the Talent Pool.`,
   );
 }
 

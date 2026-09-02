@@ -12,6 +12,8 @@ import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { newId } from '../../common/ids.js';
 import { NotFoundProblem, ValidationProblem } from '../../common/errors.js';
 import { AuditService } from '../audit/audit.service.js';
+import { FileAccessPolicy } from './file-access.js';
+import type { AuthenticatedUser } from '../../common/decorators/index.js';
 import {
   MAGIC_BYTE_WINDOW,
   UPLOAD_POLICY,
@@ -33,6 +35,7 @@ export class FilesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly access: FileAccessPolicy,
     config: ConfigService,
   ) {
     const s3 = config.getOrThrow<{
@@ -187,9 +190,14 @@ export class FilesService {
    * Short-lived presigned GET. Every issue is audited, because this is the
    * moment somebody actually reads an identity document.
    */
-  async createDownloadUrl(fileId: string, actorUserId: string) {
+  async createDownloadUrl(fileId: string, actor: AuthenticatedUser) {
     const file = await this.prisma.db.fileObject.findUnique({ where: { id: fileId } });
     if (!file || !file.confirmedAt) throw new NotFoundProblem('That file');
+
+    // An unguessable id is not authorisation: every file id in the system is
+    // handed to some client somewhere. Who may open this is decided against the
+    // record it belongs to.
+    await this.access.assertMayDownload(file, actor);
 
     const downloadUrl = await getSignedUrl(
       this.s3,
@@ -202,7 +210,7 @@ export class FilesService {
     );
 
     await this.audit.record({
-      actorUserId,
+      actorUserId: actor.userId,
       action: 'FILE_DOWNLOADED',
       entityType: file.ownerType ?? 'FileObject',
       entityId: file.ownerId ?? file.id,

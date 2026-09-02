@@ -33,6 +33,16 @@ export class DocumentsService {
     private readonly trainers: TrainersService,
   ) {}
 
+  /**
+   * The checklist for one trainer.
+   *
+   * A Manager or Project Lead may see that a document exists and whether it has
+   * been verified; opening it is HR's business (spec 3.3). So the file id — the
+   * key that opens it — is withheld from a caller without
+   * `trainers.read_documents`, and `hasFile` carries the fact separately.
+   * Returning the id and relying on the download endpoint to refuse would put
+   * the whole defence in one place, and that place used to have a hole in it.
+   */
   async list(trainerId: string, user: AuthenticatedUser) {
     await this.requireVisibleTrainer(trainerId, user);
 
@@ -52,7 +62,18 @@ export class DocumentsService {
       orderBy: { docType: 'asc' },
     });
 
-    return { data: documents, progress: await this.progress(trainerId) };
+    const mayOpen = user.trainerId === trainerId || can(user.role, 'trainers.read_documents');
+
+    return {
+      data: documents.map(({ fileId, ...document }) => ({
+        ...document,
+        // Whether something was uploaded is not the same question as whether
+        // this caller may read it, so the two are answered separately.
+        hasFile: fileId !== null,
+        fileId: mayOpen ? fileId : null,
+      })),
+      progress: await this.progress(trainerId),
+    };
   }
 
   /**

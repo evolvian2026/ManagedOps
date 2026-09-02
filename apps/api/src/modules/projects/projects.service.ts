@@ -58,7 +58,15 @@ export class ProjectsService {
         ...page,
         select: {
           ...LIST_SELECT,
-          _count: { select: { positions: true, assignments: true } },
+          // Active assignments only. Counting every assignment ever made says
+          // "5 trainers" on a card whose roster then lists four, because the
+          // roster — correctly — shows only the people currently there.
+          _count: {
+            select: {
+              positions: true,
+              assignments: { where: { status: 'active' } },
+            },
+          },
         },
       }),
       this.prisma.db.project.count({ where }),
@@ -84,7 +92,7 @@ export class ProjectsService {
           },
           orderBy: { createdAt: 'desc' },
         },
-        _count: { select: { assignments: true } },
+        _count: { select: { assignments: { where: { status: 'active' } } } },
       },
     });
     if (!project) throw new NotFoundProblem('That project');

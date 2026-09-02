@@ -12,7 +12,10 @@ import { MyLeavePage } from '../features/operations/my-leave';
 import { MyReimbursementsPage } from '../features/operations/my-reimbursements';
 import { ApprovalsPage } from '../features/operations/approvals';
 import { FlagsPage } from '../features/operations/flags';
-import { PlaceholderPage } from '../features/placeholder-page';
+import { DeboardingPage } from '../features/exit/deboarding';
+import { TalentPoolPage } from '../features/exit/talent-pool';
+import { AuditLogPage } from '../features/admin/audit-log';
+import { UsersPage } from '../features/admin/users';
 import { AppShell } from './app-shell';
 import { LoadingState } from '../components/states';
 import { PageHeader } from '../components/ui';
@@ -93,11 +96,7 @@ export function AppRoutes() {
           path="deboarding"
           element={
             <RequireCapability capability="deboarding.read">
-              <PlaceholderPage
-                title="Deboarding"
-                phase="phase 4"
-                summary="Asset return, full and final settlement, and exit feedback."
-              />
+              <DeboardingPage />
             </RequireCapability>
           }
         />
@@ -105,11 +104,7 @@ export function AppRoutes() {
           path="pool"
           element={
             <RequireCapability capability="pool.read">
-              <PlaceholderPage
-                title="Talent Pool"
-                phase="phase 4"
-                summary="Everyone we have screened or worked with before, ready to re-engage."
-              />
+              <TalentPoolPage />
             </RequireCapability>
           }
         />
@@ -167,11 +162,7 @@ export function AppRoutes() {
           path="audit"
           element={
             <RequireCapability capability="audit.read">
-              <PlaceholderPage
-                title="Audit Log"
-                phase="phase 5"
-                summary="Every change, who made it and what it looked like before."
-              />
+              <AuditLogPage />
             </RequireCapability>
           }
         />
@@ -179,11 +170,7 @@ export function AppRoutes() {
           path="users"
           element={
             <RequireCapability capability="users.manage">
-              <PlaceholderPage
-                title="Users"
-                phase="phase 5"
-                summary="Administrative accounts, roles and password resets."
-              />
+              <UsersPage />
             </RequireCapability>
           }
         />

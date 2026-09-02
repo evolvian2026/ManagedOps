@@ -79,7 +79,7 @@ export function DocumentChecklist({
                   {LABELS[document.docType] ?? document.docType}
                 </span>
                 <Badge tone={STATUS_TONE[document.status] ?? 'neutral'}>
-                  {document.status === 'pending' && !document.fileId
+                  {document.status === 'pending' && !document.hasFile
                     ? 'Not uploaded'
                     : document.status === 'pending'
                       ? 'Awaiting verification'
@@ -119,7 +119,7 @@ export function DocumentChecklist({
                 <UploadButton trainerId={trainerId} docType={document.docType} />
               ) : null}
 
-              {canVerify && document.fileId && document.status !== 'verified' ? (
+              {canVerify && document.hasFile && document.status !== 'verified' ? (
                 <>
                   <Button variant="secondary" onClick={() => setRejecting(document)}>
                     Reject

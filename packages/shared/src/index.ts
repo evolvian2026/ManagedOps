@@ -7,3 +7,4 @@ export * from './schemas/auth.js';
 export * from './schemas/recruitment.js';
 export * from './schemas/workforce.js';
 export * from './schemas/operations.js';
+export * from './schemas/exit.js';

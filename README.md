@@ -151,12 +151,26 @@ a two-tier approval limit, and flags. Screens: My Work (punch, attendance,
 daily log, deliverables, resources), My Leave, My Reimbursements, the approver's
 queue, and the Flags queue.
 
-Phases 4 and 5 add exit and reuse, then hardening. `docs/SPECIFICATION.md` §16
-has the plan. Screens whose module has not landed yet say so rather than showing
-invented data.
+**Phase 4 (exit and re-use)** — a deboarding cannot complete while an issued
+asset is unaccounted for or the settlement is open, and the refusal names the
+specific items rather than only declining. The Talent Pool is a query, not a
+table: completing a deboarding for somebody re-hire eligible puts them in it,
+and revoking that eligibility takes them straight back out, with nobody setting
+a flag. Plus role-shaped dashboards whose every number is counted through the
+same scope as the list behind it, and CSV export on the major lists.
+
+**Phase 5 (hardening and deployment)** — the permission matrix is executable:
+the suite walks the running container and fails if any handler declares no
+audience. That pass found a real hole — `GET /files/:id/download-url`
+authorised nothing beyond "is signed in", and a Project Lead could open a
+colleague's Aadhaar with an id the API had just handed them. Also: the Audit Log
+and Users screens, Terraform for the whole estate, four runbooks, and the
+browser suite in CI.
+
+Every screen in the specification is implemented; there are no placeholders.
 
 | Suite                             | Count |
 | --------------------------------- | ----- |
 | Shared contracts                  | 133   |
-| API integration (real PostgreSQL) | 222   |
-| Browser (desktop + mobile)        | 81    |
+| API integration (real PostgreSQL) | 505   |
+| Browser (desktop + mobile)        | 97    |
