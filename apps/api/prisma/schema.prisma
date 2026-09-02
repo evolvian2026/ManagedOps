@@ -672,6 +672,9 @@ model Trainer {
 
   documentsCompletedAt   DateTime?
   documentReminderStage  Int       @default(0)
+  /// When they accepted that punches record a location (spec 4.5). Null until
+  /// their first punch, which is where the notice is shown.
+  locationConsentAt      DateTime?
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -942,6 +945,8 @@ model Reimbursement {
   reviewedAt   DateTime?
   reviewNote   String?
   paidAt       DateTime?
+  /// Bank or payroll reference recorded when the money actually moved.
+  paymentReference String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

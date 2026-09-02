@@ -19,6 +19,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // Recruitment and delivery — arriving in phases 1 to 4.
   { label: 'Onboarding', path: '/onboarding', capability: 'positions.read', section: 'work' },
   { label: 'Running Projects', path: '/projects', capability: 'projects.read', section: 'work' },
+  { label: 'Approvals', path: '/approvals', capability: 'leave.approve', section: 'work' },
   { label: 'Deboarding', path: '/deboarding', capability: 'deboarding.read', section: 'work' },
   { label: 'Talent Pool', path: '/pool', capability: 'pool.read', section: 'work' },
   { label: 'Flags', path: '/flags', capability: 'flags.raise', section: 'work' },
@@ -30,12 +31,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
     capability: 'trainers.upload_documents',
     section: 'work',
   },
-  {
-    label: 'My Attendance',
-    path: '/my/attendance',
-    capability: 'attendance.punch',
-    section: 'work',
-  },
+  // One screen rather than five: the punch, the month, the sessions taught, the
+  // deliverables owed and the kit issued are all the same assignment.
+  { label: 'My Work', path: '/my/work', capability: 'attendance.punch', section: 'work' },
   { label: 'My Leave', path: '/my/leave', capability: 'leave.request', section: 'work' },
   {
     label: 'My Reimbursements',

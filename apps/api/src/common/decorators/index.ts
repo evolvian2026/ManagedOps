@@ -13,7 +13,20 @@ export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
 /** The capability a caller must hold. The guard reads the shared RBAC matrix. */
 export const RequireCapability = (capability: Capability) =>
-  SetMetadata(CAPABILITY_KEY, capability);
+  SetMetadata(CAPABILITY_KEY, [capability]);
+
+/**
+ * Any one of these is enough.
+ *
+ * A few endpoints legitimately serve two audiences through one URL: the leave
+ * list is a queue to an approver and a history to the trainer who filed the
+ * requests, and both read the same rows through different scopes. The
+ * alternative — a parallel `/mine` route per resource — duplicates the
+ * pagination, filtering and serialisation of the endpoint it shadows, and the
+ * duplicate is where the scope eventually gets forgotten.
+ */
+export const RequireAnyCapability = (...capabilities: Capability[]) =>
+  SetMetadata(CAPABILITY_KEY, capabilities);
 
 /**
  * A user with `mustChangePassword` is blocked from every route except the few

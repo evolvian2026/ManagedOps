@@ -7,6 +7,7 @@ import { OPERATIONAL_TZ, SCHEDULED_JOBS, createBoss, safely } from './jobs/sched
 import { FilesService } from './modules/files/files.service.js';
 import { InterviewJobs } from './jobs/interview-jobs.js';
 import { OnboardingJobs } from './jobs/onboarding-jobs.js';
+import { OperationsJobs } from './jobs/operations-jobs.js';
 
 /**
  * The scheduled-work process.
@@ -15,9 +16,9 @@ import { OnboardingJobs } from './jobs/onboarding-jobs.js';
  * services, the same configuration — and runs from the same container image with
  * a different entrypoint, so the two can never drift apart in behaviour.
  *
- * Handlers arrive with the module that owns them. Attendance and leave land in
- * phase 3; until then those jobs are registered but warn at boot rather than
- * silently doing nothing.
+ * Handlers arrive with the module that owns them. A job declared in the
+ * schedule with no handler warns at boot rather than silently doing nothing for
+ * a phase and a half.
  */
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Worker');
@@ -26,6 +27,7 @@ async function bootstrap(): Promise<void> {
   const files = app.get(FilesService);
   const interviewJobs = app.get(InterviewJobs);
   const onboardingJobs = app.get(OnboardingJobs);
+  const operationsJobs = app.get(OperationsJobs);
 
   const boss = await createBoss(config.getOrThrow<string>('databaseUrl'));
   boss.on('error', (error) => logger.error({ err: error }, 'Job queue error'));
@@ -42,6 +44,12 @@ async function bootstrap(): Promise<void> {
     },
     'onboarding.document.remind': async () => {
       await onboardingJobs.sendDocumentReminders();
+    },
+    'attendance.close.day': async () => {
+      await operationsJobs.closeAttendanceDay();
+    },
+    'leave.escalate': async () => {
+      await operationsJobs.escalateStaleLeave();
     },
     'files.cleanup.orphans': async () => {
       // Anything unattached after a day was abandoned mid-upload.

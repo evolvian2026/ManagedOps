@@ -3,6 +3,7 @@ import { Badge, Button, PageHeader, Table, Td, Th } from '../../components/ui';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states';
 import { formatDate, humanise } from '../onboarding/format';
 import { TrainerProfile } from './trainer-profile';
+import { toneFor } from '../operations/punch-card';
 import { useProjects, useRoster, type ProjectRow, type RosterRow } from './api';
 
 const PROJECT_TONE: Record<string, 'neutral' | 'positive' | 'pending' | 'critical'> = {
@@ -198,10 +199,10 @@ function RosterRowView({ row, onOpen }: { row: RosterRow; onOpen: () => void }) 
       <Td>
         {row.today ? (
           <div className="text-sm">
-            <Badge tone="positive">{humanise(row.today.status)}</Badge>
+            <Badge tone={toneFor(row.today.status)}>{humanise(row.today.status)}</Badge>
           </div>
         ) : (
-          // Attendance lands in phase 3. Saying so beats inventing a status.
+          // Nobody has punched today. Saying so beats inventing a status.
           <span className="text-xs text-ink-faint">Not recorded</span>
         )}
       </Td>

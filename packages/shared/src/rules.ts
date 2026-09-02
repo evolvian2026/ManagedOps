@@ -124,3 +124,60 @@ export function computeLeaveBalance(
   const unpaid = Math.max(0, requestedDays - remaining);
   return { allowance, used: usedDays, remaining, unpaid };
 }
+
+/**
+ * What a day's status is, given only the punches on it.
+ *
+ * Used when a punch is recorded, when the nightly close runs, and when a
+ * rejected correction has to put a day back the way it was. One function for all
+ * three means a day cannot end up labelled differently depending on which path
+ * last touched it.
+ */
+export function attendanceStatusFromPunches(options: {
+  punchInAt: Date | null;
+  punchOutAt: Date | null;
+  workStartTime: string;
+  graceMinutes?: number;
+}): 'present' | 'late' | 'missing_punch_out' | 'absent' {
+  const { punchInAt, punchOutAt, workStartTime, graceMinutes } = options;
+  if (!punchInAt) return 'absent';
+  if (!punchOutAt) return 'missing_punch_out';
+  return isLatePunchIn(punchInAt, workStartTime, graceMinutes) ? 'late' : 'present';
+}
+
+/** Statuses that mean the day was accounted for by leave rather than worked. */
+export const LEAVE_ATTENDANCE_STATUSES = ['on_leave', 'half_day', 'leave_without_pay'] as const;
+
+/**
+ * Whether a calendar date is a working day for a project.
+ *
+ * Weekly offs and holidays are properties of the calendar, not of a person, so
+ * they are derived here rather than stored per trainer per day.
+ */
+export function isWorkingDay(
+  date: string,
+  options: { weeklyOffDays?: readonly number[]; holidays?: readonly string[] } = {},
+): boolean {
+  const weeklyOff = new Set(options.weeklyOffDays ?? [0]);
+  const holidays = new Set(options.holidays ?? []);
+  const dayOfWeek = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return !weeklyOff.has(dayOfWeek) && !holidays.has(date);
+}
+
+/** The non-working reason for a date, or null when it is an ordinary working day. */
+export function nonWorkingReason(
+  date: string,
+  options: { weeklyOffDays?: readonly number[]; holidays?: readonly string[] } = {},
+): 'holiday' | 'weekly_off' | null {
+  const holidays = new Set(options.holidays ?? []);
+  if (holidays.has(date)) return 'holiday';
+  const weeklyOff = new Set(options.weeklyOffDays ?? [0]);
+  return weeklyOff.has(new Date(`${date}T00:00:00Z`).getUTCDay()) ? 'weekly_off' : null;
+}
+
+/** Spec 4.7 — HR approves up to this; above it a Manager must sign off. */
+export const REIMBURSEMENT_HR_LIMIT = 10_000;
+
+export function needsHighValueApproval(amount: number): boolean {
+  return amount > REIMBURSEMENT_HR_LIMIT;
+}

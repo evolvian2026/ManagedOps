@@ -27,6 +27,8 @@ describe('transition tables', () => {
       'interview',
       'offer',
       'trainer',
+      'attendance',
+      'correction',
       'leave',
       'reimbursement',
       'assetIssue',
@@ -155,5 +157,65 @@ describe('specific rules the specification calls out', () => {
     expect(canTransition('deboarding', 'initiated', 'completed')).toBe(false);
     expect(nextStates('deboarding', 'initiated')).toEqual(['assets_pending']);
     expect(nextStates('deboarding', 'fnf_pending')).toEqual(['completed']);
+  });
+});
+
+describe('the attendance day', () => {
+  it('downgrades an open day at the nightly close', () => {
+    // The edge the close job depends on: a day recorded optimistically at
+    // punch-in becomes missing_punch_out if nobody ever closed it.
+    expect(canTransition('attendance', 'present', 'missing_punch_out')).toBe(true);
+    expect(canTransition('attendance', 'late', 'missing_punch_out')).toBe(true);
+  });
+
+  it('never turns a corrected day back into an ordinary present one', () => {
+    // A day somebody amended stays distinguishable from one punched cleanly.
+    expect(canTransition('attendance', 'corrected', 'present')).toBe(false);
+    expect(canTransition('attendance', 'correction_pending', 'corrected')).toBe(true);
+  });
+
+  it('puts a rejected correction back to any status the punches support', () => {
+    for (const status of ['present', 'late', 'missing_punch_out', 'absent']) {
+      expect(canTransition('attendance', 'correction_pending', status)).toBe(true);
+    }
+  });
+
+  it('treats a leave or calendar day as settled', () => {
+    for (const status of ['on_leave', 'half_day', 'leave_without_pay', 'holiday', 'weekly_off']) {
+      expect(nextStates('attendance', status)).toEqual([]);
+    }
+  });
+
+  it('lets an approved leave overwrite a day that was only marked absent', () => {
+    expect(canTransition('attendance', 'absent', 'on_leave')).toBe(true);
+    expect(canTransition('attendance', 'absent', 'leave_without_pay')).toBe(true);
+  });
+});
+
+describe('a correction', () => {
+  it('is decided exactly once', () => {
+    expect(canTransition('correction', 'pending', 'approved')).toBe(true);
+    expect(canTransition('correction', 'pending', 'rejected')).toBe(true);
+    expect(nextStates('correction', 'approved')).toEqual([]);
+    expect(nextStates('correction', 'rejected')).toEqual([]);
+  });
+});
+
+describe('an asset issue', () => {
+  it('can still be returned after being written off as lost', () => {
+    // Kit does turn up again; the register should be able to say so.
+    expect(canTransition('assetIssue', 'lost', 'returned')).toBe(true);
+    expect(canTransition('assetIssue', 'damaged', 'returned')).toBe(true);
+  });
+
+  it('is finished once it has come back', () => {
+    expect(nextStates('assetIssue', 'returned')).toEqual([]);
+  });
+});
+
+describe('a flag', () => {
+  it('cannot be reopened once it is closed', () => {
+    expect(nextStates('flag', 'closed')).toEqual([]);
+    expect(canTransition('flag', 'closed', 'closed')).toBe(false);
   });
 });

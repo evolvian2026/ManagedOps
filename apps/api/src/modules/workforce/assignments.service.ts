@@ -150,9 +150,8 @@ export class AssignmentsService {
 
   /**
    * A project's roster with today's attendance beside each name — the Running
-   * Projects table. Attendance itself lands in phase 3; until then the column
-   * reports honestly that nothing has been recorded rather than inventing a
-   * status nobody set.
+   * Projects table. A day nobody has punched yet simply has no record, and the
+   * column says so rather than inventing a status nobody set.
    */
   async roster(projectId: string, user: AuthenticatedUser) {
     const project = await this.prisma.db.project.findFirst({

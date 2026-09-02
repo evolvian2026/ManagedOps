@@ -281,12 +281,15 @@ async function main(): Promise<void> {
     // otherwise the demo data would be records the API itself would refuse.
     // Only the metadata is created here; the object lands in storage when a
     // real upload happens, so the download link is inert until then.
-    const resumeFileId = uuidv7();
-    await prisma.fileObject.upsert({
+    // The upsert's return value is the row that exists now, which on a re-run is
+    // the one already stored — not the id generated a line earlier. Using the
+    // generated id regardless is why re-seeding used to fail with "record to
+    // update not found" the second time it was run.
+    const resume = await prisma.fileObject.upsert({
       where: { storageKey: `resumes/${seed.email}/cv.pdf` },
       update: {},
       create: {
-        id: resumeFileId,
+        id: uuidv7(),
         storageKey: `resumes/${seed.email}/cv.pdf`,
         originalName: `${seed.name.replace(/ /g, '-').toLowerCase()}-cv.pdf`,
         mimeType: 'application/pdf',
@@ -307,7 +310,7 @@ async function main(): Promise<void> {
         email: seed.email,
         phone: seed.phone,
         source: seed.source,
-        resumeFileId,
+        resumeFileId: resume.id,
         status: 'active',
         poolEligible: true,
         createdById: users.hr!.id,
@@ -315,7 +318,7 @@ async function main(): Promise<void> {
     });
 
     await prisma.fileObject.update({
-      where: { id: resumeFileId },
+      where: { id: resume.id },
       data: { ownerId: candidate.id },
     });
 
@@ -503,6 +506,239 @@ async function main(): Promise<void> {
     });
   }
 
+  // ------------------------------------------------------- delivery operations
+  //
+  // Enough history for the screens to be worth looking at: a fortnight of
+  // attendance per trainer with a couple of late arrivals and one day left
+  // open, a correction waiting on an approver, leave in both states, teaching
+  // sessions, a syllabus, an issued laptop, a claim above HR's limit and an
+  // open flag. All of it derived from today's date, so the demo never goes stale.
+
+  const assignments = await prisma.assignment.findMany({
+    where: { projectId: project.id, status: 'active' },
+    select: { id: true, trainerId: true, role: true },
+  });
+
+  const byTrainer = new Map(assignments.map((row) => [row.trainerId, row]));
+  const leadAssignment = assignments.find((row) => row.role === 'lead');
+  const sneha = trainers.find((trainer) => trainer.name === 'Sneha Iyer');
+  const arjun = trainers.find((trainer) => trainer.name === 'Arjun Desai');
+  const snehaAssignment = sneha ? byTrainer.get(sneha.trainerId) : undefined;
+  const arjunAssignment = arjun ? byTrainer.get(arjun.trainerId) : undefined;
+
+  /** Working days only — Sunday is the project's weekly off. */
+  function recentWorkingDays(count: number): Date[] {
+    const days: Date[] = [];
+    for (let offset = 1; days.length < count; offset += 1) {
+      const day = daysFromToday(-offset);
+      if (day.getUTCDay() !== 0) days.push(day);
+    }
+    return days;
+  }
+
+  function at(day: Date, hours: number, minutes: number): Date {
+    // Stored as an instant; these are IST clock times, which is UTC+5:30.
+    const instant = new Date(day);
+    instant.setUTCHours(hours - 5, minutes - 30, 0, 0);
+    return instant;
+  }
+
+  const history = recentWorkingDays(12);
+  let openDayRecordId: string | null = null;
+
+  for (const [index, assignment] of assignments.entries()) {
+    for (const [dayIndex, day] of history.entries()) {
+      const workDate = dateOnly(day);
+      const existing = await prisma.attendanceRecord.findUnique({
+        where: { assignmentId_workDate: { assignmentId: assignment.id, workDate } },
+      });
+      if (existing) continue;
+
+      // One trainer arrives late twice, and one day was never punched out —
+      // the two cases the corrections queue exists for.
+      const late = index === 1 && (dayIndex === 2 || dayIndex === 6);
+      const leftOpen = index === 1 && dayIndex === 1;
+
+      const record = await prisma.attendanceRecord.create({
+        data: {
+          id: uuidv7(),
+          assignmentId: assignment.id,
+          workDate,
+          punchInAt: at(day, late ? 9 : 8, late ? 42 : 51),
+          punchInLat: new Prisma.Decimal('18.520430'),
+          punchInLng: new Prisma.Decimal('73.856743'),
+          punchOutAt: leftOpen ? null : at(day, 17, 35),
+          punchOutLat: leftOpen ? null : new Prisma.Decimal('18.520430'),
+          punchOutLng: leftOpen ? null : new Prisma.Decimal('73.856743'),
+          status: leftOpen ? 'missing_punch_out' : late ? 'late' : 'present',
+          locationStatus: 'captured',
+          source: 'self',
+        },
+      });
+      if (leftOpen) openDayRecordId = record.id;
+    }
+  }
+
+  // A correction waiting on the lead: the day above, with the punch-out the
+  // trainer says they forgot.
+  if (openDayRecordId && sneha) {
+    const pending = await prisma.attendanceCorrection.findFirst({
+      where: { attendanceRecordId: openDayRecordId },
+    });
+    if (!pending) {
+      await prisma.attendanceCorrection.create({
+        data: {
+          id: uuidv7(),
+          attendanceRecordId: openDayRecordId,
+          requestedById: sneha.userId,
+          requestedPunchOut: at(history[1], 18, 5),
+          reason: 'Client wrapped up late and I left without punching out.',
+          status: 'pending',
+        },
+      });
+      await prisma.attendanceRecord.update({
+        where: { id: openDayRecordId },
+        data: { status: 'correction_pending' },
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------- leave
+  if (arjunAssignment) {
+    const existing = await prisma.leaveRequest.findFirst({
+      where: { assignmentId: arjunAssignment.id },
+    });
+    if (!existing) {
+      await prisma.leaveRequest.create({
+        data: {
+          id: uuidv7(),
+          assignmentId: arjunAssignment.id,
+          startDate: dateOnly(daysFromToday(7)),
+          endDate: dateOnly(daysFromToday(8)),
+          dayType: 'full',
+          daysCount: new Prisma.Decimal(2),
+          unpaidDays: new Prisma.Decimal(0),
+          reason: 'Family wedding in Nashik.',
+          status: 'submitted',
+        },
+      });
+    }
+  }
+
+  if (snehaAssignment) {
+    const existing = await prisma.leaveRequest.findFirst({
+      where: { assignmentId: snehaAssignment.id, status: 'approved' },
+    });
+    if (!existing) {
+      const takenOn = dateOnly(history[4]);
+      await prisma.leaveRequest.create({
+        data: {
+          id: uuidv7(),
+          assignmentId: snehaAssignment.id,
+          startDate: takenOn,
+          endDate: takenOn,
+          dayType: 'half',
+          daysCount: new Prisma.Decimal('0.5'),
+          unpaidDays: new Prisma.Decimal(0),
+          reason: 'Medical appointment.',
+          status: 'approved',
+          approverId: leadTrainer?.userId,
+          decidedAt: daysFromToday(-6),
+        },
+      });
+      // An approved leave writes the day, exactly as the API does.
+      await prisma.attendanceRecord.upsert({
+        where: { assignmentId_workDate: { assignmentId: snehaAssignment.id, workDate: takenOn } },
+        create: {
+          id: uuidv7(),
+          assignmentId: snehaAssignment.id,
+          workDate: takenOn,
+          status: 'half_day',
+          source: 'leave',
+          locationStatus: 'unavailable',
+        },
+        update: { status: 'half_day', source: 'leave' },
+      });
+    }
+  }
+
+  // ------------------------------------------------------------- daily log
+  const syllabus = [
+    'React component model and JSX',
+    'State, effects and the rules of hooks',
+    'Routing and data loading',
+    'Forms, validation and accessibility',
+    'Testing components with Vitest',
+  ];
+
+  if (leadAssignment) {
+    for (const [index, day] of history.slice(0, 5).entries()) {
+      const workDate = dateOnly(day);
+      const existing = await prisma.dailyLog.findFirst({
+        where: { assignmentId: leadAssignment.id, workDate },
+      });
+      if (existing) continue;
+
+      await prisma.dailyLog.create({
+        data: {
+          id: uuidv7(),
+          assignmentId: leadAssignment.id,
+          workDate,
+          sessionNo: 1,
+          topic: syllabus[index % syllabus.length],
+          hours: new Prisma.Decimal('3.5'),
+          notes: 'Full cohort present. Lab exercise completed in pairs.',
+          submittedAt: at(day, 18, 0),
+          locked: true,
+        },
+      });
+    }
+  }
+
+  // ----------------------------------------------------------- deliverables
+  for (const assignment of [leadAssignment, snehaAssignment].filter(Boolean)) {
+    for (const [index, title] of syllabus.entries()) {
+      const existing = await prisma.deliverable.findFirst({
+        where: { assignmentId: assignment!.id, title },
+      });
+      if (existing) continue;
+
+      await prisma.deliverable.create({
+        data: {
+          id: uuidv7(),
+          assignmentId: assignment!.id,
+          type: 'syllabus',
+          title,
+          dueDate: dateOnly(daysFromToday(index * 7 - 14)),
+          status: index < 2 ? 'completed' : index === 2 ? 'in_progress' : 'pending',
+          completedAt: index < 2 ? daysFromToday(index * 7 - 14) : null,
+          createdById: users.manager!.id,
+        },
+      });
+    }
+  }
+
+  if (leadAssignment) {
+    const duty = 'Weekly progress report to Horizon';
+    const existing = await prisma.deliverable.findFirst({
+      where: { assignmentId: leadAssignment.id, title: duty },
+    });
+    if (!existing) {
+      await prisma.deliverable.create({
+        data: {
+          id: uuidv7(),
+          assignmentId: leadAssignment.id,
+          type: 'other_duty',
+          title: duty,
+          description: 'Attendance, syllabus progress and any blockers.',
+          dueDate: dateOnly(daysFromToday(3)),
+          status: 'pending',
+          createdById: users.manager!.id,
+        },
+      });
+    }
+  }
+
   // ---------------------------------------------------------------- assets
   const assetSeeds = [
     { name: 'Dell Latitude 5440', category: 'hardware' as const, serialNumber: 'DL5440-0001' },
@@ -531,6 +767,88 @@ async function main(): Promise<void> {
         createdById: users.manager!.id,
       },
     });
+  }
+
+  // A laptop actually in someone's hands, so the Resources screen and the
+  // deboarding reconciliation both have something real to reconcile.
+  if (leadAssignment) {
+    const laptop = await prisma.asset.findUnique({ where: { serialNumber: 'DL5440-0001' } });
+    const alreadyIssued = laptop
+      ? await prisma.assetIssue.findFirst({ where: { assetId: laptop.id, status: 'issued' } })
+      : null;
+    if (laptop && !alreadyIssued) {
+      await prisma.assetIssue.create({
+        data: {
+          id: uuidv7(),
+          assetId: laptop.id,
+          assignmentId: leadAssignment.id,
+          issuedById: users.manager!.id,
+          issuedAt: daysFromToday(-44),
+          issueSerial: laptop.serialNumber,
+          issueNotes: 'Charger and sleeve included.',
+          status: 'issued',
+        },
+      });
+      await prisma.asset.update({ where: { id: laptop.id }, data: { status: 'issued' } });
+    }
+  }
+
+  // -------------------------------------------------------- reimbursements
+  if (snehaAssignment && sneha) {
+    const existing = await prisma.reimbursement.findFirst({
+      where: { trainerId: sneha.trainerId },
+    });
+    if (!existing) {
+      const proof = await prisma.fileObject.upsert({
+        where: { storageKey: `claims/${sneha.email}/cab-receipt.pdf` },
+        update: {},
+        create: {
+          id: uuidv7(),
+          storageKey: `claims/${sneha.email}/cab-receipt.pdf`,
+          originalName: 'cab-receipt.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 62_000,
+          uploadedById: sneha.userId,
+          ownerType: 'Reimbursement',
+          confirmedAt: daysFromToday(-3),
+          scanStatus: 'skipped',
+        },
+      });
+
+      // Above HR's ₹10,000 limit, so the Manager has to sign it off — the tier
+      // rule is visible in the demo rather than only in the tests.
+      const claim = await prisma.reimbursement.create({
+        data: {
+          id: uuidv7(),
+          trainerId: sneha.trainerId,
+          assignmentId: snehaAssignment.id,
+          category: 'travel',
+          amount: new Prisma.Decimal('12500.00'),
+          description: 'Return airfare to the Hyderabad campus for the induction week.',
+          proofFileId: proof.id,
+          status: 'submitted',
+        },
+      });
+      await prisma.fileObject.update({ where: { id: proof.id }, data: { ownerId: claim.id } });
+    }
+  }
+
+  // ---------------------------------------------------------------- flags
+  if (arjunAssignment && leadTrainer) {
+    const existing = await prisma.flag.findFirst({ where: { assignmentId: arjunAssignment.id } });
+    if (!existing) {
+      await prisma.flag.create({
+        data: {
+          id: uuidv7(),
+          assignmentId: arjunAssignment.id,
+          raisedById: leadTrainer.userId,
+          severity: 'medium',
+          description:
+            'Arrived after the session start on three occasions this fortnight. The cohort was left waiting each time.',
+          status: 'raised',
+        },
+      });
+    }
   }
 
   console.log('');

@@ -139,12 +139,24 @@ escalation to HR, and a trainer becomes active exactly when every mandatory
 document is verified and they have somewhere to work. Screens: Running Projects,
 the project roster, a trainer's profile, and the trainer's own My Profile.
 
-Phases 3 to 5 add delivery operations, exit and hardening.
-`docs/SPECIFICATION.md` §16 has the plan. Screens whose module has not landed yet
-say so rather than showing invented data.
+**Phase 3 (delivery operations)** — a trainer's working day, and the decisions
+it creates. Attendance is one punch pair a day, held by a unique index rather
+than a check; location is recorded and never enforced, so a denied permission
+still produces a valid punch. A nightly job closes the day, which is what makes
+a correction reachable. Leave carries a per-assignment balance, escalates past
+the lead after 24 hours, and writes the attendance days it covers. Alongside
+those: the daily log (locked on save, unlocked only by an audited admin action),
+deliverables, the asset register with serial reconciliation, reimbursements with
+a two-tier approval limit, and flags. Screens: My Work (punch, attendance,
+daily log, deliverables, resources), My Leave, My Reimbursements, the approver's
+queue, and the Flags queue.
+
+Phases 4 and 5 add exit and reuse, then hardening. `docs/SPECIFICATION.md` §16
+has the plan. Screens whose module has not landed yet say so rather than showing
+invented data.
 
 | Suite                             | Count |
 | --------------------------------- | ----- |
-| Shared contracts                  | 109   |
-| API integration (real PostgreSQL) | 160   |
-| Browser (desktop + mobile)        | 52    |
+| Shared contracts                  | 133   |
+| API integration (real PostgreSQL) | 222   |
+| Browser (desktop + mobile)        | 81    |

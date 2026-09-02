@@ -7,8 +7,27 @@ import { formatDate, formatInr, humanise } from '../onboarding/format';
 import { DocumentChecklist } from './document-checklist';
 import { useResendCredentials, useTrainer, useTrainerDocuments, type TrainerDetail } from './api';
 import { TRAINER_TONE } from './running-projects';
+import {
+  AttendanceTab,
+  ClaimsTab,
+  DailyLogTab,
+  DeliverablesTab,
+  FlagsTab,
+  LeaveTab,
+  ResourcesTab,
+} from './trainer-operations';
 
-type Tab = 'overview' | 'documents' | 'assignments';
+type Tab =
+  | 'overview'
+  | 'documents'
+  | 'assignments'
+  | 'attendance'
+  | 'log'
+  | 'deliverables'
+  | 'leave'
+  | 'resources'
+  | 'claims'
+  | 'flags';
 
 /**
  * One trainer, as an administrator sees them. Salary and identity documents are
@@ -27,6 +46,10 @@ export function TrainerProfile({ trainerId, onBack }: { trainerId: string; onBac
   }
 
   const canSeeDocuments = can('trainers.read_documents');
+  // Attendance, leave and assets all hang off an assignment. A trainer between
+  // projects has none, and the tabs say so rather than showing an empty table.
+  const activeAssignmentId =
+    trainer.data.assignments.find((assignment) => assignment.status === 'active')?.id ?? null;
 
   return (
     <>
@@ -61,6 +84,17 @@ export function TrainerProfile({ trainerId, onBack }: { trainerId: string; onBac
                 ]
               : []),
             { id: 'assignments', label: 'Assignments', count: trainer.data.assignments.length },
+            // Each operational tab appears only for a caller who can read it —
+            // a lead sees their team's attendance, never their colleague's pay.
+            ...(can('attendance.read') ? [{ id: 'attendance' as const, label: 'Attendance' }] : []),
+            ...(can('dailylogs.read') ? [{ id: 'log' as const, label: 'Daily Log' }] : []),
+            ...(can('deliverables.read')
+              ? [{ id: 'deliverables' as const, label: 'Deliverables' }]
+              : []),
+            ...(can('leave.approve') ? [{ id: 'leave' as const, label: 'Leave' }] : []),
+            ...(can('assets.read') ? [{ id: 'resources' as const, label: 'Resources' }] : []),
+            ...(can('reimbursements.approve') ? [{ id: 'claims' as const, label: 'Claims' }] : []),
+            ...(can('flags.raise') ? [{ id: 'flags' as const, label: 'Flags' }] : []),
           ]}
         />
       </div>
@@ -81,8 +115,26 @@ export function TrainerProfile({ trainerId, onBack }: { trainerId: string; onBac
             canUpload={can('trainers.verify_documents')}
           />
         )
-      ) : (
+      ) : tab === 'assignments' ? (
         <Assignments trainer={trainer.data} />
+      ) : tab === 'attendance' ? (
+        <AttendanceTab assignmentId={activeAssignmentId} />
+      ) : tab === 'log' ? (
+        <DailyLogTab trainerId={trainerId} />
+      ) : tab === 'deliverables' ? (
+        <DeliverablesTab trainerId={trainerId} />
+      ) : tab === 'leave' ? (
+        <LeaveTab trainerId={trainerId} />
+      ) : tab === 'resources' ? (
+        <ResourcesTab assignmentId={activeAssignmentId} />
+      ) : tab === 'claims' ? (
+        <ClaimsTab trainerId={trainerId} />
+      ) : (
+        <FlagsTab
+          trainerId={trainerId}
+          assignmentId={activeAssignmentId}
+          trainerName={trainer.data.user.name}
+        />
       )}
     </>
   );

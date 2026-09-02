@@ -16,6 +16,26 @@ export function formatIst(value: string | Date, style: 'full' | 'short' = 'full'
   })} IST`;
 }
 
+/**
+ * Just the clock time, in IST.
+ *
+ * Slicing the tail off `formatIst` looks equivalent and is not: the string it
+ * produces varies in length with the date and the hour, so a fixed slice cuts
+ * "8:51 am" down to "51 am". Asking the formatter for a time is the only way to
+ * get one.
+ */
+export function formatIstTime(value: string | Date | null): string {
+  if (!value) return '—';
+  const instant = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(instant.getTime())) return '—';
+
+  return instant.toLocaleTimeString('en-IN', {
+    timeZone: OPERATIONAL_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export function formatDate(value: string | Date | null): string {
   if (!value) return '—';
   const instant = typeof value === 'string' ? new Date(value) : value;

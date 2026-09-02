@@ -1193,7 +1193,7 @@ two-instance rolling deploys · notification preferences · advanced reporting �
 
 ## 16a. Build Status
 
-**Phases 0, 1 and 2 are complete and verified.**
+**Phases 0 to 3 are complete and verified.**
 
 _Phase 0 — foundations:_ monorepo, full data model and migrations, authentication,
 the permission layer, audit trail, file storage, notifications, the scheduled-job
@@ -1207,11 +1207,16 @@ _Phase 2 — onboarding and workforce:_ offer-to-trainer conversion, employee
 codes, the document checklist with verification and staged reminders, automatic
 activation, assignments and the project roster, and the four workforce screens.
 
+_Phase 3 — delivery operations:_ attendance with GPS and a nightly close,
+corrections, leave with balances and escalation, the daily log, deliverables,
+the asset register, reimbursements with a two-tier limit, flags, and the
+trainer's own screens alongside the approver's queue.
+
 | Check                                   | Result      |
 | --------------------------------------- | ----------- |
-| Shared contract tests                   | 109 passing |
-| API integration tests (real PostgreSQL) | 160 passing |
-| Browser tests (desktop + mobile)        | 52 passing  |
+| Shared contract tests                   | 133 passing |
+| API integration tests (real PostgreSQL) | 222 passing |
+| Browser tests (desktop + mobile)        | 81 passing  |
 | Typecheck, formatting, both builds      | Clean       |
 
 ### Corrections this build surfaced
@@ -1258,6 +1263,38 @@ Phase 2:
 - **§11.2** — Aadhaar and PAN ask for their last four characters _before_ the
   file is uploaded. Validating afterwards means the file has already gone to
   storage when the request is refused.
+
+Phase 3:
+
+- **§3.4** — the permission model needed a fifth rule: a screen that says "my"
+  must ask for the caller's own records explicitly. A Project Lead's read
+  capability is project-scoped, so `My Work` and `My Leave` listed their whole
+  team. `mine=true` is combined with the caller's scope under `AND`, so it can
+  only ever narrow — an administrator asking for "mine" gets nothing, not
+  everything.
+- **§4.5** — `holiday` and `weekly_off` are derived from the project calendar
+  rather than written per trainer per day. They are facts about a project, not
+  about a person; storing them would be a quarter of a million rows a year that
+  go stale the moment a holiday is added. The API still returns those statuses,
+  so the contract is unchanged.
+- **§4.5** — a working day is only an absence once it is over. The nightly close
+  decides; the calendar showing today as absent at 10am is a prediction, not a
+  record.
+- **§4.5** — the attendance transition table gained `present → missing_punch_out`
+  and `late → missing_punch_out`. A punch-in records the day optimistically, and
+  without that edge the nightly close could not downgrade a day nobody closed —
+  which is the only route to a correction.
+- **§9.6** — the punch must not depend on the browser answering. The Geolocation
+  API's own `timeout` starts only after the permission is resolved, so a browser
+  that never answers calls neither callback and the punch hangs with no
+  feedback. The client races its own deadline; the worst case is a punch without
+  coordinates, which the product already handles.
+- **§8.1** — one endpoint may declare several capabilities, any one of which
+  admits the caller (`RequireAnyCapability`). The leave and claim lists are a
+  queue to an approver and a history to the person who filed them; the
+  alternative, a parallel `/mine` route per resource, duplicates the pagination
+  and filtering of the endpoint it shadows, and the duplicate is where the scope
+  eventually gets forgotten.
 
 ---
 

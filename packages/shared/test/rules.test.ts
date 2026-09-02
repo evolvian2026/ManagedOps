@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_GRACE_MINUTES,
   DEFAULT_LEAVE_ALLOWANCE_DAYS,
+  REIMBURSEMENT_HR_LIMIT,
+  attendanceStatusFromPunches,
   computeLeaveBalance,
   countLeaveDays,
   eachDate,
   isLatePunchIn,
+  isWorkingDay,
   istMinutesOfDay,
+  needsHighValueApproval,
+  nonWorkingReason,
   parseClockTime,
   toIstDateString,
 } from '../src/rules.js';
@@ -143,5 +148,80 @@ describe('leave balance', () => {
 
   it('never reports a negative remaining balance', () => {
     expect(computeLeaveBalance(3, 5).remaining).toBe(0);
+  });
+});
+
+describe('what a day is, given only its punches', () => {
+  const workStartTime = '09:00';
+
+  it('is absent with no punch-in at all', () => {
+    expect(attendanceStatusFromPunches({ punchInAt: null, punchOutAt: null, workStartTime })).toBe(
+      'absent',
+    );
+  });
+
+  it('is missing a punch-out when only the arrival was recorded', () => {
+    expect(
+      attendanceStatusFromPunches({
+        punchInAt: new Date('2026-03-02T03:25:00Z'),
+        punchOutAt: null,
+        workStartTime,
+      }),
+    ).toBe('missing_punch_out');
+  });
+
+  it('is present inside the grace period and late outside it', () => {
+    // 09:14 IST — inside the fifteen-minute grace.
+    expect(
+      attendanceStatusFromPunches({
+        punchInAt: new Date('2026-03-02T03:44:00Z'),
+        punchOutAt: new Date('2026-03-02T12:00:00Z'),
+        workStartTime,
+      }),
+    ).toBe('present');
+
+    // 09:16 IST — one minute past it.
+    expect(
+      attendanceStatusFromPunches({
+        punchInAt: new Date('2026-03-02T03:46:00Z'),
+        punchOutAt: new Date('2026-03-02T12:00:00Z'),
+        workStartTime,
+      }),
+    ).toBe('late');
+  });
+});
+
+describe('the project calendar', () => {
+  // 2026-03-01 is a Sunday; 2026-03-02 a Monday.
+  it('treats the configured weekly off as non-working', () => {
+    expect(isWorkingDay('2026-03-01')).toBe(false);
+    expect(nonWorkingReason('2026-03-01')).toBe('weekly_off');
+    expect(isWorkingDay('2026-03-02')).toBe(true);
+    expect(nonWorkingReason('2026-03-02')).toBeNull();
+  });
+
+  it('lets a project choose a different weekly off', () => {
+    expect(isWorkingDay('2026-03-01', { weeklyOffDays: [6] })).toBe(true);
+    expect(nonWorkingReason('2026-03-07', { weeklyOffDays: [6] })).toBe('weekly_off');
+  });
+
+  it('names a holiday as a holiday, not as a weekly off', () => {
+    expect(nonWorkingReason('2026-03-04', { holidays: ['2026-03-04'] })).toBe('holiday');
+  });
+
+  it('calls a day that is both a holiday and a weekly off a holiday', () => {
+    // The more specific reason is the more useful one to show.
+    expect(nonWorkingReason('2026-03-01', { holidays: ['2026-03-01'] })).toBe('holiday');
+  });
+});
+
+describe('the reimbursement approval limit', () => {
+  it('lets HR settle anything up to the limit', () => {
+    expect(needsHighValueApproval(REIMBURSEMENT_HR_LIMIT)).toBe(false);
+    expect(needsHighValueApproval(9_999)).toBe(false);
+  });
+
+  it('sends anything above it to a manager', () => {
+    expect(needsHighValueApproval(REIMBURSEMENT_HR_LIMIT + 1)).toBe(true);
   });
 });

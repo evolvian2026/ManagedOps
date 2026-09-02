@@ -17,6 +17,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ProjectsModule } from './modules/projects/projects.module.js';
 import { RecruitmentModule } from './modules/recruitment/recruitment.module.js';
 import { WorkforceModule } from './modules/workforce/workforce.module.js';
+import { OperationsModule } from './modules/operations/operations.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
 
 @Module({
@@ -32,6 +33,7 @@ import { JobsModule } from './jobs/jobs.module.js';
     ProjectsModule,
     RecruitmentModule,
     WorkforceModule,
+    OperationsModule,
     JobsModule,
     HealthModule,
   ],

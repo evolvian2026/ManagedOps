@@ -1,6 +1,8 @@
 import type {
   ApplicationStatus,
   AssetIssueStatus,
+  AttendanceStatus,
+  CorrectionStatus,
   DeboardingStatus,
   FlagStatus,
   InterviewStatus,
@@ -90,6 +92,41 @@ export const FLAG_TRANSITIONS: TransitionTable<FlagStatus> = {
   closed: [],
 };
 
+/**
+ * A working day, from the first punch to whatever the day ends up being.
+ *
+ * The non-punch statuses are terminal for the day: an approved leave or a
+ * holiday is a statement about the calendar, not a state something else can
+ * move on from. `missing_punch_out` is the one that can still change, because a
+ * correction is exactly the mechanism for fixing a day that was left open — and
+ * `corrected` is where it lands, so a rewritten day is never indistinguishable
+ * from one that was punched cleanly.
+ */
+export const ATTENDANCE_TRANSITIONS: TransitionTable<AttendanceStatus> = {
+  // A punch-in records the day optimistically as present or late. If the day
+  // ends without a punch-out, the nightly close downgrades it — which is the
+  // edge that makes a correction reachable at all.
+  present: ['missing_punch_out', 'correction_pending', 'on_leave', 'half_day'],
+  late: ['missing_punch_out', 'correction_pending', 'on_leave', 'half_day'],
+  missing_punch_out: ['correction_pending', 'absent'],
+  // A rejected correction puts the day back to whatever its punches say, which
+  // includes absent when the record carries none.
+  correction_pending: ['corrected', 'present', 'late', 'missing_punch_out', 'absent'],
+  corrected: ['correction_pending'],
+  absent: ['correction_pending', 'on_leave', 'half_day', 'leave_without_pay'],
+  on_leave: [],
+  half_day: [],
+  leave_without_pay: [],
+  holiday: [],
+  weekly_off: [],
+};
+
+export const CORRECTION_TRANSITIONS: TransitionTable<CorrectionStatus> = {
+  pending: ['approved', 'rejected'],
+  approved: [],
+  rejected: [],
+};
+
 export const DEBOARDING_TRANSITIONS: TransitionTable<DeboardingStatus> = {
   initiated: ['assets_pending'],
   assets_pending: ['fnf_pending'],
@@ -102,6 +139,8 @@ export const TRANSITION_TABLES = {
   interview: INTERVIEW_TRANSITIONS,
   offer: OFFER_TRANSITIONS,
   trainer: TRAINER_TRANSITIONS,
+  attendance: ATTENDANCE_TRANSITIONS,
+  correction: CORRECTION_TRANSITIONS,
   leave: LEAVE_TRANSITIONS,
   reimbursement: REIMBURSEMENT_TRANSITIONS,
   assetIssue: ASSET_ISSUE_TRANSITIONS,

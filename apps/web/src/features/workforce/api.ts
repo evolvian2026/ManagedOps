@@ -42,7 +42,7 @@ export interface RosterRow {
     status: TrainerStatus;
     user: { id: string; name: string; email: string };
   };
-  /** Null until attendance lands in phase 3 — reported, never invented. */
+  /** Null when nobody has punched today — reported, never invented. */
   today: { status: string; punchInAt: string | null; punchOutAt: string | null } | null;
 }
 
@@ -195,10 +195,13 @@ export function useConvertOffer() {
  * Uploads a file straight to object storage, then confirms it so the server can
  * verify its real size and type. Returns the file id to attach to a record.
  */
-export async function uploadFile(
-  file: File,
-  purpose: 'identity_document' | 'certificate',
-): Promise<string> {
+export type UploadPurpose =
+  | 'identity_document'
+  | 'certificate'
+  | 'reimbursement_proof'
+  | 'deliverable';
+
+export async function uploadFile(file: File, purpose: UploadPurpose): Promise<string> {
   const ticket = await api.post<{ file: { id: string }; uploadUrl: string }>('/files/upload-url', {
     purpose,
     fileName: file.name,

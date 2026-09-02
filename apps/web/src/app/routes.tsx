@@ -7,6 +7,11 @@ import { DashboardPage } from '../features/dashboard/dashboard-page';
 import { OnboardingPage } from '../features/onboarding/onboarding-page';
 import { RunningProjectsPage } from '../features/workforce/running-projects';
 import { MyProfilePage } from '../features/workforce/my-profile';
+import { MyWorkPage } from '../features/operations/my-work';
+import { MyLeavePage } from '../features/operations/my-leave';
+import { MyReimbursementsPage } from '../features/operations/my-reimbursements';
+import { ApprovalsPage } from '../features/operations/approvals';
+import { FlagsPage } from '../features/operations/flags';
 import { PlaceholderPage } from '../features/placeholder-page';
 import { AppShell } from './app-shell';
 import { LoadingState } from '../components/states';
@@ -109,14 +114,18 @@ export function AppRoutes() {
           }
         />
         <Route
+          path="approvals"
+          element={
+            <RequireCapability capability="leave.approve">
+              <ApprovalsPage />
+            </RequireCapability>
+          }
+        />
+        <Route
           path="flags"
           element={
             <RequireCapability capability="flags.raise">
-              <PlaceholderPage
-                title="Flags"
-                phase="phase 3"
-                summary="Concerns raised against a trainer, and the action taken."
-              />
+              <FlagsPage />
             </RequireCapability>
           }
         />
@@ -129,26 +138,20 @@ export function AppRoutes() {
           }
         />
         <Route
-          path="my/attendance"
+          path="my/work"
           element={
             <RequireCapability capability="attendance.punch">
-              <PlaceholderPage
-                title="My Attendance"
-                phase="phase 3"
-                summary="Punch in and out, and review your attendance history."
-              />
+              <MyWorkPage />
             </RequireCapability>
           }
         />
+        {/* The sidebar entry became "My Work"; anyone with the old link still lands. */}
+        <Route path="my/attendance" element={<Navigate to="/my/work" replace />} />
         <Route
           path="my/leave"
           element={
             <RequireCapability capability="leave.request">
-              <PlaceholderPage
-                title="My Leave"
-                phase="phase 3"
-                summary="Your balance, your requests and where each one stands."
-              />
+              <MyLeavePage />
             </RequireCapability>
           }
         />
@@ -156,11 +159,7 @@ export function AppRoutes() {
           path="my/reimbursements"
           element={
             <RequireCapability capability="reimbursements.submit">
-              <PlaceholderPage
-                title="My Reimbursements"
-                phase="phase 3"
-                summary="Submit a claim with its proof, and track what has been paid."
-              />
+              <MyReimbursementsPage />
             </RequireCapability>
           }
         />

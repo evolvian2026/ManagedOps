@@ -82,14 +82,14 @@ test.describe('what each role can see', () => {
     expect(nav).toContain('Audit Log');
     expect(nav).toContain('Talent Pool');
     // An administrator has no trainer profile, so no self-service either.
-    expect(nav).not.toContain('My Attendance');
+    expect(nav).not.toContain('My Work');
   });
 
   test('a trainer sees only their own working life', async ({ page }) => {
     await signIn(page, ACCOUNTS.trainer);
     const nav = await navLabels(page);
 
-    expect(nav).toContain('My Attendance');
+    expect(nav).toContain('My Work');
     expect(nav).toContain('My Leave');
     expect(nav).toContain('My Reimbursements');
     expect(nav).not.toContain('Users');

@@ -168,3 +168,97 @@ export function assignmentScope(
   }
   return MATCH_NOTHING;
 }
+
+/**
+ * Everything below hangs off an assignment: a punch, a leave request, a session
+ * in the daily log, a deliverable, an issued laptop, a flag. So they all reuse
+ * `assignmentScope` rather than restating "own means my trainer id, project
+ * means the projects I lead" seven more times — one definition, seven callers,
+ * and no chance of the seventh drifting from the first.
+ */
+function throughAssignment(user: AuthenticatedUser, capability: Capability) {
+  const scope = requireScope(user, capability);
+  if (scope === 'all') return {};
+  return { assignment: assignmentScope(user, capability) };
+}
+
+export function attendanceScope(
+  user: AuthenticatedUser,
+  capability: Capability = 'attendance.read',
+) {
+  return throughAssignment(user, capability);
+}
+
+/**
+ * Corrections reach their assignment through the attendance record they amend.
+ *
+ * The approval capability is what scopes this queue, not the read capability: a
+ * project lead approves for their own project, HR and managers for everyone.
+ */
+export function correctionScope(
+  user: AuthenticatedUser,
+  capability: Capability = 'attendance.corrections.approve',
+) {
+  const scope = requireScope(user, capability);
+  if (scope === 'all') return {};
+  return { attendanceRecord: { assignment: assignmentScope(user, capability) } };
+}
+
+export function leaveScope(user: AuthenticatedUser, capability: Capability = 'leave.approve') {
+  return throughAssignment(user, capability);
+}
+
+export function dailyLogScope(user: AuthenticatedUser, capability: Capability = 'dailylogs.read') {
+  return throughAssignment(user, capability);
+}
+
+export function deliverableScope(
+  user: AuthenticatedUser,
+  capability: Capability = 'deliverables.read',
+) {
+  return throughAssignment(user, capability);
+}
+
+export function assetIssueScope(user: AuthenticatedUser, capability: Capability = 'assets.read') {
+  return throughAssignment(user, capability);
+}
+
+export function flagScope(user: AuthenticatedUser, capability: Capability = 'flags.resolve') {
+  return throughAssignment(user, capability);
+}
+
+/**
+ * Reimbursements name a trainer directly and an assignment only optionally — a
+ * claim can outlive the assignment it was incurred on. Scoping through the
+ * trainer keeps a claim visible to its owner after their project ends, which
+ * scoping through the assignment would not.
+ */
+export function reimbursementScope(
+  user: AuthenticatedUser,
+  capability: Capability = 'reimbursements.approve',
+) {
+  const scope = requireScope(user, capability);
+  if (scope === 'all') return {};
+  if (scope === 'own') {
+    return user.trainerId ? { trainerId: user.trainerId } : MATCH_NOTHING;
+  }
+  if (scope === 'project') {
+    return user.ledProjectIds.length > 0
+      ? { trainer: { assignments: { some: { projectId: { in: user.ledProjectIds } } } } }
+      : MATCH_NOTHING;
+  }
+  return MATCH_NOTHING;
+}
+
+/**
+ * The `mine=true` narrowing, expressed as a predicate on the owning assignment.
+ *
+ * This is not a scope — the caller's scope has already been applied and this is
+ * combined with it under `AND`, so it can only ever shrink the result. It exists
+ * because a Project Lead legitimately reads their whole project, which makes
+ * their own "My …" screen list their team unless the screen says whose records
+ * it means.
+ */
+export function ownAssignmentFilter(user: AuthenticatedUser) {
+  return user.trainerId ? { assignment: { trainerId: user.trainerId } } : MATCH_NOTHING;
+}
