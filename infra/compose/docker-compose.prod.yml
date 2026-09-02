@@ -1,0 +1,51 @@
+# Production stack for a single host (spec 12.3).
+#
+# The database is RDS, not a container — managed backups and point-in-time
+# recovery are worth more here than co-locating Postgres would save.
+name: managedops
+
+services:
+  caddy:
+    image: ghcr.io/${GITHUB_REPOSITORY:-evolvian2026/managedops}/web:${IMAGE_TAG:-latest}
+    restart: always
+    ports: ['80:80', '443:443']
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [api]
+
+  api:
+    image: ghcr.io/${GITHUB_REPOSITORY:-evolvian2026/managedops}/api:${IMAGE_TAG:-latest}
+    restart: always
+    env_file: [../../.env.production]
+    environment:
+      NODE_ENV: production
+    expose: ['4000']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    image: ghcr.io/${GITHUB_REPOSITORY:-evolvian2026/managedops}/api:${IMAGE_TAG:-latest}
+    restart: always
+    env_file: [../../.env.production]
+    environment:
+      NODE_ENV: production
+    command: ['node', 'dist/worker.js']
+    depends_on: [api]
+
+volumes:
+  caddy-data:
+  caddy-config:

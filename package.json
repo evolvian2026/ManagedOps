@@ -1,0 +1,41 @@
+{
+  "name": "managedops",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ManagedOps — workforce operations platform for training delivery",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm --filter @managedops/shared build && pnpm --filter @managedops/api build && pnpm --filter @managedops/web build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "test:unit": "pnpm --filter @managedops/api test:unit && pnpm --filter @managedops/shared test",
+    "db:migrate": "pnpm --filter @managedops/api db:migrate",
+    "db:seed": "pnpm --filter @managedops/api db:seed",
+    "infra:up": "docker compose -f infra/compose/docker-compose.dev.yml up -d",
+    "infra:down": "docker compose -f infra/compose/docker-compose.dev.yml down",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md,yml,yaml}\"",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts"
+  },
+  "devDependencies": {
+    "prettier": "3.4.2",
+    "typescript": "5.7.3",
+    "@playwright/test": "1.49.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "@swc/core",
+      "argon2",
+      "esbuild",
+      "prisma"
+    ]
+  }
+}

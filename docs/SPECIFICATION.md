@@ -27,14 +27,14 @@ an owner, a status, an audit trail and a next action.
 
 ### 1.2 In scope for v1
 
-| Area | Included |
-|---|---|
-| Recruitment | Positions, candidates, applications, screening, interviews, offers |
-| Onboarding | Credential issue, forced password change, document collection & verification, project assignment |
-| Delivery | Attendance (GPS-stamped), daily teaching log, deliverables, leave, assets, reimbursements, performance flags |
-| Exit | Deboarding checklist, asset return, full & final settlement, exit feedback, re-hire eligibility |
-| Reuse | Talent Pool spanning rejected candidates, declined offers and former trainers |
-| Platform | RBAC, audit log, notifications (in-app + email), file storage, scheduled jobs, reporting exports |
+| Area        | Included                                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------------------------ |
+| Recruitment | Positions, candidates, applications, screening, interviews, offers                                           |
+| Onboarding  | Credential issue, forced password change, document collection & verification, project assignment             |
+| Delivery    | Attendance (GPS-stamped), daily teaching log, deliverables, leave, assets, reimbursements, performance flags |
+| Exit        | Deboarding checklist, asset return, full & final settlement, exit feedback, re-hire eligibility              |
+| Reuse       | Talent Pool spanning rejected candidates, declined offers and former trainers                                |
+| Platform    | RBAC, audit log, notifications (in-app + email), file storage, scheduled jobs, reporting exports             |
 
 ### 1.3 Explicitly out of scope for v1
 
@@ -48,14 +48,14 @@ an owner, a status, an audit trail and a next action.
 
 ### 1.4 Scale targets
 
-| Dimension | Target |
-|---|---|
-| Trainers under management | 300 active, 2,000 lifetime records |
-| Concurrent admin users | 25 |
-| Concurrent trainer users | 300 (attendance punch spikes at ~09:00 IST) |
-| Projects | 50 concurrent |
-| Documents stored | ~15,000 files, ~30 GB |
-| Peak request rate | ~50 req/s |
+| Dimension                 | Target                                      |
+| ------------------------- | ------------------------------------------- |
+| Trainers under management | 300 active, 2,000 lifetime records          |
+| Concurrent admin users    | 25                                          |
+| Concurrent trainer users  | 300 (attendance punch spikes at ~09:00 IST) |
+| Projects                  | 50 concurrent                               |
+| Documents stored          | ~15,000 files, ~30 GB                       |
+| Peak request rate         | ~50 req/s                                   |
 
 This is a **small-data, workflow-heavy** system. Correctness, auditability and clarity matter far
 more than horizontal scale, and the architecture reflects that.
@@ -67,11 +67,11 @@ more than horizontal scale, and the architecture reflects that.
 ### 2.1 Recruitment
 
 - **Positions** — created against a project with a headcount target; auto-closes when filled.
-- **Candidates & applications** — a candidate is a *person* (created once, reusable forever); an
+- **Candidates & applications** — a candidate is a _person_ (created once, reusable forever); an
   application is that person applied to one position. This separation is what makes the Talent
   Pool genuinely reusable.
-- **Screening** — HR records the call outcome: *proceed to interview*, *not available*, or
-  *reject*. Outcome drives routing automatically.
+- **Screening** — HR records the call outcome: _proceed to interview_, _not available_, or
+  _reject_. Outcome drives routing automatically.
 - **Interviews** — scheduled with a meeting link, date/time (IST), and an assigned interviewer.
   Automatic reminders. Missed interviews stay visible until rescheduled; rescheduling creates a
   linked follow-up round so the history survives.
@@ -121,50 +121,50 @@ more than horizontal scale, and the architecture reflects that.
 
 ### 3.1 Roles
 
-| Role | Scope | Purpose |
-|---|---|---|
-| **Super Admin** | Global | User & role management, system settings, full audit access |
-| **Manager** | Global | Owns projects and staffing; approves escalations and high-value reimbursements |
-| **HR** | Global | Candidate intake, screening, offers, onboarding, documents, reimbursements |
-| **Interviewer** | Assigned interviews only | Records interview outcome and feedback |
-| **Project Lead** | Own project(s) | Read-only oversight of their team; raises flags; first-line leave approver |
-| **Trainer** | Own records only | Self-service |
+| Role             | Scope                    | Purpose                                                                        |
+| ---------------- | ------------------------ | ------------------------------------------------------------------------------ |
+| **Super Admin**  | Global                   | User & role management, system settings, full audit access                     |
+| **Manager**      | Global                   | Owns projects and staffing; approves escalations and high-value reimbursements |
+| **HR**           | Global                   | Candidate intake, screening, offers, onboarding, documents, reimbursements     |
+| **Interviewer**  | Assigned interviews only | Records interview outcome and feedback                                         |
+| **Project Lead** | Own project(s)           | Read-only oversight of their team; raises flags; first-line leave approver     |
+| **Trainer**      | Own records only         | Self-service                                                                   |
 
 ### 3.2 Permission matrix
 
 Legend: **F** full (create/read/update/delete) · **W** create+read+update · **R** read ·
 **O** own records only · **P** own project(s) only · **—** no access
 
-| Capability | Super Admin | Manager | HR | Interviewer | Project Lead | Trainer |
-|---|---|---|---|---|---|---|
-| Users & roles | F | — | — | — | — | — |
-| System settings | F | R | R | — | — | — |
-| Audit log | F | R | R | — | — | — |
-| Projects | F | F | R | — | R (P) | — |
-| Positions | F | F | W | — | R (P) | — |
-| Candidates & applications | F | F | F | R (assigned only) | — | — |
-| Screening decision | F | W | W | — | — | — |
-| Interviews — schedule | F | W | W | — | — | — |
-| Interviews — record outcome | F | W | W | W (assigned) | — | — |
-| Offers | F | F | F | — | — | — |
-| Trainer profile (non-sensitive) | F | F | F | — | R (P) | R (O) |
-| Trainer salary | F | F | F | — | — | R (O) |
-| Trainer ID documents | F | R | F | — | — | W (O) |
-| Assignments | F | F | W | — | R (P) | R (O) |
-| Attendance records | F | F | F | — | R (P) | W (O) |
-| Attendance corrections — approve | F | W | W | — | W (P) | — |
-| Daily log | F | R | R | — | R (P) | W (O) |
-| Deliverables | F | W | W | — | W (P) | W (O) |
-| Leave — request | — | — | — | — | — | W (O) |
-| Leave — approve | F | W | W | — | W (P) | — |
-| Assets | F | F | F | — | R (P) | R (O) |
-| Reimbursements — submit | — | — | — | — | — | W (O) |
-| Reimbursements — approve ≤ ₹10,000 | F | W | W | — | — | — |
-| Reimbursements — approve > ₹10,000 | F | W | — | — | — | — |
-| Flags — raise | F | W | W | — | W (P) | — |
-| Flags — resolve | F | W | W | — | — | — |
-| Deboarding | F | F | W | — | R (P) | R (O) |
-| Talent Pool | F | F | F | — | — | — |
+| Capability                         | Super Admin | Manager | HR  | Interviewer       | Project Lead | Trainer |
+| ---------------------------------- | ----------- | ------- | --- | ----------------- | ------------ | ------- |
+| Users & roles                      | F           | —       | —   | —                 | —            | —       |
+| System settings                    | F           | R       | R   | —                 | —            | —       |
+| Audit log                          | F           | R       | R   | —                 | —            | —       |
+| Projects                           | F           | F       | R   | —                 | R (P)        | —       |
+| Positions                          | F           | F       | W   | —                 | R (P)        | —       |
+| Candidates & applications          | F           | F       | F   | R (assigned only) | —            | —       |
+| Screening decision                 | F           | W       | W   | —                 | —            | —       |
+| Interviews — schedule              | F           | W       | W   | —                 | —            | —       |
+| Interviews — record outcome        | F           | W       | W   | W (assigned)      | —            | —       |
+| Offers                             | F           | F       | F   | —                 | —            | —       |
+| Trainer profile (non-sensitive)    | F           | F       | F   | —                 | R (P)        | R (O)   |
+| Trainer salary                     | F           | F       | F   | —                 | —            | R (O)   |
+| Trainer ID documents               | F           | R       | F   | —                 | —            | W (O)   |
+| Assignments                        | F           | F       | W   | —                 | R (P)        | R (O)   |
+| Attendance records                 | F           | F       | F   | —                 | R (P)        | W (O)   |
+| Attendance corrections — approve   | F           | W       | W   | —                 | W (P)        | —       |
+| Daily log                          | F           | R       | R   | —                 | R (P)        | W (O)   |
+| Deliverables                       | F           | W       | W   | —                 | W (P)        | W (O)   |
+| Leave — request                    | —           | —       | —   | —                 | —            | W (O)   |
+| Leave — approve                    | F           | W       | W   | —                 | W (P)        | —       |
+| Assets                             | F           | F       | F   | —                 | R (P)        | R (O)   |
+| Reimbursements — submit            | —           | —       | —   | —                 | —            | W (O)   |
+| Reimbursements — approve ≤ ₹10,000 | F           | W       | W   | —                 | —            | —       |
+| Reimbursements — approve > ₹10,000 | F           | W       | —   | —                 | —            | —       |
+| Flags — raise                      | F           | W       | W   | —                 | W (P)        | —       |
+| Flags — resolve                    | F           | W       | W   | —                 | —            | —       |
+| Deboarding                         | F           | F       | W   | —                 | R (P)        | R (O)   |
+| Talent Pool                        | F           | F       | F   | —                 | —            | —       |
 
 ### 3.3 Sensitive-data rules
 
@@ -192,7 +192,7 @@ Three layers, all required:
 
 ### 4.1 Candidate lifecycle
 
-Candidate status (the *person*):
+Candidate status (the _person_):
 
 ```
 active ──────────► hired
@@ -200,7 +200,7 @@ active ──────────► hired
    └──► archived ◄───┘ (after deboarding, if not re-hire eligible)
 ```
 
-Application status (the *person applied to a position*) — the state machine that actually drives work:
+Application status (the _person applied to a position_) — the state machine that actually drives work:
 
 ```
                     ┌──► rejected_screening ──┐
@@ -217,8 +217,9 @@ any state ──► withdrawn   (candidate pulled out)
 ```
 
 **Rules**
-- Screening outcome *proceed* → `interviewing`. *Not available* → `not_available`, pool eligible.
-  *Reject* → `rejected_screening`, pool eligible with reason recorded.
+
+- Screening outcome _proceed_ → `interviewing`. _Not available_ → `not_available`, pool eligible.
+  _Reject_ → `rejected_screening`, pool eligible with reason recorded.
 - A candidate may hold several applications over time; only one may be `hired` at a time.
 - `pool_eligible` defaults to true for every terminal non-hired state and can be turned off by HR.
 
@@ -235,6 +236,7 @@ scheduled ──► completed ──► outcome: selected | rejected
 ```
 
 **Rules**
+
 - All times stored UTC, displayed and entered in **IST (Asia/Kolkata)**.
 - Reminders to candidate and interviewer: **09:00 IST on the interview day** and **30 minutes before**.
 - "To be scheduled" is not a stored state — it is the derived set of applications in
@@ -288,6 +290,7 @@ Non-punch day statuses, set by the system or an approved leave: `absent`, `on_le
 `half_day`, `leave_without_pay`, `holiday`, `weekly_off`.
 
 **Rules**
+
 - A unique database constraint on `(assignment_id, work_date)` makes duplicate punch-in or
   punch-out structurally impossible, not merely validated against.
 - **Grace period: 15 minutes** after the project's configured start time. Rationale: trainers
@@ -308,6 +311,7 @@ submitted ──► approved ──► (attendance days written as on_leave / ha
 ```
 
 **Rules**
+
 - Allowance: **3 full-day equivalents per assignment.** A half-day consumes 0.5.
 - Requests exceeding the balance may still be submitted; the approver sees the overage and, if
   approved, the excess days are recorded as `leave_without_pay`.
@@ -371,30 +375,30 @@ be pushed straight into a new application on an open position.
 
 ### 5.1 Choices
 
-| Layer | Choice | Why |
-|---|---|---|
-| Language | **TypeScript 5.x** everywhere | One language, shared types across the wire |
-| Runtime | **Node.js 22 LTS** | Current LTS through 2027 |
-| Backend | **NestJS 11** | Module system maps 1:1 onto bounded contexts; DI makes the policy/audit layers testable; guards and pipes give a clean place for RBAC and validation; first-class OpenAPI generation |
-| ORM | **Prisma 6** | Typed client generated from schema, first-class migrations, explicit relations — removes the whole class of untyped-reference bugs |
-| Database | **PostgreSQL 16** | See §5.2 |
-| Frontend | **React 19 + Vite 6** | Fast, well-understood, large hiring pool |
-| Routing / data | **React Router 7** + **TanStack Query 5** | Query gives caching, retries and per-request loading/error states for free — the states the spec demands |
-| Forms | **React Hook Form + Zod** | The same Zod schemas the API validates with |
-| Styling | **Tailwind CSS 4** + **shadcn/ui** (Radix primitives) | Accessible-by-default components; no bespoke component library to maintain |
-| Shared contracts | `packages/shared` — Zod schemas, enums, state-machine definitions | Single source of truth; the API/UI contract drift that plagues split codebases is eliminated |
-| Background jobs | **pg-boss** | A durable job queue *inside PostgreSQL* — reminders, escalations, archival, all with retries and dead-lettering, with **no Redis to run** |
-| Auth | JWT access token + rotating refresh token in an httpOnly cookie | See §10 |
-| Password hashing | **Argon2id** | OWASP's current first choice; memory-hard, unlike bcrypt |
-| Files | **S3** (AWS) / **MinIO** (local) via presigned URLs | Uploads never transit the API |
-| Email | **AWS SES** (prod) / **Mailpit** (local) | Behind a transport interface |
-| Logging | **Pino** structured JSON + request IDs | Machine-parseable, cheap |
-| API docs | **OpenAPI 3.1** via Nest Swagger | Generated from the code, cannot drift |
-| Testing | **Vitest** + **Supertest** + **Testcontainers** + **Playwright** | Unit, integration against a real Postgres, and E2E |
-| Containers | **Docker** multi-stage, distroless-ish, non-root | |
-| CI/CD | **GitHub Actions** → GHCR → SSH deploy | |
-| IaC | **Terraform** | Declarative, reviewable AWS state |
-| Monorepo | **pnpm workspaces** | Two apps and two packages need workspaces, not a build orchestrator |
+| Layer            | Choice                                                            | Why                                                                                                                                                                                  |
+| ---------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Language         | **TypeScript 5.x** everywhere                                     | One language, shared types across the wire                                                                                                                                           |
+| Runtime          | **Node.js 22 LTS**                                                | Current LTS through 2027                                                                                                                                                             |
+| Backend          | **NestJS 11**                                                     | Module system maps 1:1 onto bounded contexts; DI makes the policy/audit layers testable; guards and pipes give a clean place for RBAC and validation; first-class OpenAPI generation |
+| ORM              | **Prisma 6**                                                      | Typed client generated from schema, first-class migrations, explicit relations — removes the whole class of untyped-reference bugs                                                   |
+| Database         | **PostgreSQL 16**                                                 | See §5.2                                                                                                                                                                             |
+| Frontend         | **React 19 + Vite 6**                                             | Fast, well-understood, large hiring pool                                                                                                                                             |
+| Routing / data   | **React Router 7** + **TanStack Query 5**                         | Query gives caching, retries and per-request loading/error states for free — the states the spec demands                                                                             |
+| Forms            | **React Hook Form + Zod**                                         | The same Zod schemas the API validates with                                                                                                                                          |
+| Styling          | **Tailwind CSS 4** + **shadcn/ui** (Radix primitives)             | Accessible-by-default components; no bespoke component library to maintain                                                                                                           |
+| Shared contracts | `packages/shared` — Zod schemas, enums, state-machine definitions | Single source of truth; the API/UI contract drift that plagues split codebases is eliminated                                                                                         |
+| Background jobs  | **pg-boss**                                                       | A durable job queue _inside PostgreSQL_ — reminders, escalations, archival, all with retries and dead-lettering, with **no Redis to run**                                            |
+| Auth             | JWT access token + rotating refresh token in an httpOnly cookie   | See §10                                                                                                                                                                              |
+| Password hashing | **Argon2id**                                                      | OWASP's current first choice; memory-hard, unlike bcrypt                                                                                                                             |
+| Files            | **S3** (AWS) / **MinIO** (local) via presigned URLs               | Uploads never transit the API                                                                                                                                                        |
+| Email            | **AWS SES** (prod) / **Mailpit** (local)                          | Behind a transport interface                                                                                                                                                         |
+| Logging          | **Pino** structured JSON + request IDs                            | Machine-parseable, cheap                                                                                                                                                             |
+| API docs         | **OpenAPI 3.1** via Nest Swagger                                  | Generated from the code, cannot drift                                                                                                                                                |
+| Testing          | **Vitest** + **Supertest** + **Testcontainers** + **Playwright**  | Unit, integration against a real Postgres, and E2E                                                                                                                                   |
+| Containers       | **Docker** multi-stage, distroless-ish, non-root                  |                                                                                                                                                                                      |
+| CI/CD            | **GitHub Actions** → GHCR → SSH deploy                            |                                                                                                                                                                                      |
+| IaC              | **Terraform**                                                     | Declarative, reviewable AWS state                                                                                                                                                    |
+| Monorepo         | **pnpm workspaces**                                               | Two apps and two packages need workspaces, not a build orchestrator                                                                                                                  |
 
 ### 5.2 PostgreSQL over MongoDB — the most significant deviation
 
@@ -462,24 +466,24 @@ domain events, never by reaching into each other's tables.
 
 For 300 trainers and 25 admins, microservices would add network failure modes, distributed
 transactions and deployment complexity in exchange for scaling headroom the system will never use.
-The module boundaries are drawn so extraction stays *possible*, but extraction is explicitly not a
+The module boundaries are drawn so extraction stays _possible_, but extraction is explicitly not a
 v1 deliverable. (See §15.9.)
 
 ### 6.2 Modules
 
-| Module | Owns |
-|---|---|
-| `identity` | Users, sessions, password lifecycle, RBAC policies |
-| `audit` | Audit log capture and query |
-| `files` | Presigned upload/download, metadata, retention |
-| `notifications` | In-app notifications, email dispatch, templates |
-| `projects` | Projects, positions, holidays, project settings |
-| `recruitment` | Candidates, applications, screening, interviews, offers |
-| `workforce` | Trainers, documents, assignments, deboarding |
-| `attendance` | Attendance records, corrections, leave requests and balances |
-| `operations` | Daily logs, deliverables, assets, reimbursements, flags |
-| `pool` | Talent Pool read model |
-| `reporting` | Dashboard summaries, CSV exports |
+| Module          | Owns                                                         |
+| --------------- | ------------------------------------------------------------ |
+| `identity`      | Users, sessions, password lifecycle, RBAC policies           |
+| `audit`         | Audit log capture and query                                  |
+| `files`         | Presigned upload/download, metadata, retention               |
+| `notifications` | In-app notifications, email dispatch, templates              |
+| `projects`      | Projects, positions, holidays, project settings              |
+| `recruitment`   | Candidates, applications, screening, interviews, offers      |
+| `workforce`     | Trainers, documents, assignments, deboarding                 |
+| `attendance`    | Attendance records, corrections, leave requests and balances |
+| `operations`    | Daily logs, deliverables, assets, reimbursements, flags      |
+| `pool`          | Talent Pool read model                                       |
+| `reporting`     | Dashboard summaries, CSV exports                             |
 
 Cross-cutting concerns (`common/`) are implemented once as NestJS primitives:
 
@@ -512,15 +516,15 @@ The API and worker are the **same image** with a different entrypoint, so they c
 
 ### 6.4 Scheduled jobs (worker)
 
-| Job | Schedule (IST) | Does |
-|---|---|---|
-| `interview.reminder.daily` | 09:00 daily | Notifies candidate + interviewer of today's interviews |
-| `interview.reminder.imminent` | every 5 min | Notifies for interviews starting in 30–35 minutes |
-| `interview.archive.stale` | 02:00 daily | Archives interviews missed > 30 days |
-| `attendance.close.day` | 23:55 daily | Marks `missing_punch_out`; writes `absent` for active assignments with no record |
-| `onboarding.document.remind` | 10:00 daily | 24 h / 72 h document reminders, escalates at 72 h |
-| `leave.escalate` | hourly | Escalates leave requests undecided for 24 h |
-| `files.cleanup.orphans` | 03:00 weekly | Deletes uploads never attached to a record |
+| Job                           | Schedule (IST) | Does                                                                             |
+| ----------------------------- | -------------- | -------------------------------------------------------------------------------- |
+| `interview.reminder.daily`    | 09:00 daily    | Notifies candidate + interviewer of today's interviews                           |
+| `interview.reminder.imminent` | every 5 min    | Notifies for interviews starting in 30–35 minutes                                |
+| `interview.archive.stale`     | 02:00 daily    | Archives interviews missed > 30 days                                             |
+| `attendance.close.day`        | 23:55 daily    | Marks `missing_punch_out`; writes `absent` for active assignments with no record |
+| `onboarding.document.remind`  | 10:00 daily    | 24 h / 72 h document reminders, escalates at 72 h                                |
+| `leave.escalate`              | hourly         | Escalates leave requests undecided for 24 h                                      |
+| `files.cleanup.orphans`       | 03:00 weekly   | Deletes uploads never attached to a record                                       |
 
 Every job is idempotent and keyed so a re-run cannot double-send.
 
@@ -541,59 +545,59 @@ Every job is idempotent and keyed so a re-run cannot double-send.
 
 **Identity & platform**
 
-| Table | Key fields |
-|---|---|
-| `users` | email (unique, citext), password_hash, role, status, must_change_password, name, phone, last_login_at, failed_login_count, locked_until |
-| `refresh_tokens` | user_id, token_hash, expires_at, revoked_at, replaced_by_id, ip, user_agent |
-| `audit_logs` | actor_user_id, action, entity_type, entity_id, before (jsonb), after (jsonb), ip, user_agent, created_at |
-| `files` | storage_key, original_name, mime_type, size_bytes, checksum_sha256, owner_type, owner_id, uploaded_by_id, scan_status |
-| `notifications` | user_id, type, title, body, entity_type, entity_id, read_at |
-| `app_settings` | key (pk), value (jsonb), updated_by_id |
+| Table            | Key fields                                                                                                                              |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`          | email (unique, citext), password_hash, role, status, must_change_password, name, phone, last_login_at, failed_login_count, locked_until |
+| `refresh_tokens` | user_id, token_hash, expires_at, revoked_at, replaced_by_id, ip, user_agent                                                             |
+| `audit_logs`     | actor_user_id, action, entity_type, entity_id, before (jsonb), after (jsonb), ip, user_agent, created_at                                |
+| `files`          | storage_key, original_name, mime_type, size_bytes, checksum_sha256, owner_type, owner_id, uploaded_by_id, scan_status                   |
+| `notifications`  | user_id, type, title, body, entity_type, entity_id, read_at                                                                             |
+| `app_settings`   | key (pk), value (jsonb), updated_by_id                                                                                                  |
 
 **Projects**
 
-| Table | Key fields |
-|---|---|
-| `projects` | name, code (unique), client_name, location, start_date, end_date, status, manager_id, hr_id, lead_trainer_id, work_start_time, grace_minutes |
-| `positions` | project_id, title, headcount, filled_count, description, status, closed_at |
-| `holidays` | project_id (nullable = org-wide), date, name — unique (project_id, date) |
+| Table       | Key fields                                                                                                                                   |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `projects`  | name, code (unique), client_name, location, start_date, end_date, status, manager_id, hr_id, lead_trainer_id, work_start_time, grace_minutes |
+| `positions` | project_id, title, headcount, filled_count, description, status, closed_at                                                                   |
+| `holidays`  | project_id (nullable = org-wide), date, name — unique (project_id, date)                                                                     |
 
 **Recruitment**
 
-| Table | Key fields |
-|---|---|
-| `candidates` | name, email (unique), phone, linkedin_url, source, resume_file_id, status, pool_eligible, worked_before, notes |
-| `applications` | candidate_id, position_id, status, screening_outcome, screening_notes, screened_by_id, screened_at, rejection_reason — unique (candidate_id, position_id) |
-| `interviews` | application_id, round, scheduled_at, duration_minutes, meeting_url, interviewer_id, status, outcome, feedback, recording_url, previous_interview_id, archived_at |
-| `offers` | application_id, version, salary_annual, joining_date, status, sent_at, responded_at, notes, attachment_file_id — unique (application_id, version) |
+| Table          | Key fields                                                                                                                                                       |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `candidates`   | name, email (unique), phone, linkedin_url, source, resume_file_id, status, pool_eligible, worked_before, notes                                                   |
+| `applications` | candidate_id, position_id, status, screening_outcome, screening_notes, screened_by_id, screened_at, rejection_reason — unique (candidate_id, position_id)        |
+| `interviews`   | application_id, round, scheduled_at, duration_minutes, meeting_url, interviewer_id, status, outcome, feedback, recording_url, previous_interview_id, archived_at |
+| `offers`       | application_id, version, salary_annual, joining_date, status, sent_at, responded_at, notes, attachment_file_id — unique (application_id, version)                |
 
 **Workforce**
 
-| Table | Key fields |
-|---|---|
-| `trainers` | user_id (unique), candidate_id, employee_code (unique), personal_email, work_email, phone, joining_date, salary_annual, status, onboarding_hr_id, rehire_eligible |
-| `trainer_documents` | trainer_id, doc_type, file_id, last_four, status (pending/verified/rejected), verified_by_id, verified_at, reject_reason — unique (trainer_id, doc_type) |
-| `assignments` | trainer_id, project_id, role (trainer/lead), start_date, end_date, status, leave_allowance_days — partial unique (trainer_id, project_id) where status = 'active' |
-| `deboardings` | assignment_id (unique), initiated_by_id, last_working_day, reason, assets_reconciled, travel_notes, fnf_status, fnf_amount, fnf_settled_at, feedback, completed_at |
+| Table               | Key fields                                                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `trainers`          | user_id (unique), candidate_id, employee_code (unique), personal_email, work_email, phone, joining_date, salary_annual, status, onboarding_hr_id, rehire_eligible  |
+| `trainer_documents` | trainer_id, doc_type, file_id, last_four, status (pending/verified/rejected), verified_by_id, verified_at, reject_reason — unique (trainer_id, doc_type)           |
+| `assignments`       | trainer_id, project_id, role (trainer/lead), start_date, end_date, status, leave_allowance_days — partial unique (trainer_id, project_id) where status = 'active'  |
+| `deboardings`       | assignment_id (unique), initiated_by_id, last_working_day, reason, assets_reconciled, travel_notes, fnf_status, fnf_amount, fnf_settled_at, feedback, completed_at |
 
 **Attendance & leave**
 
-| Table | Key fields |
-|---|---|
-| `attendance_records` | assignment_id, work_date, punch_in_at, punch_in_lat, punch_in_lng, punch_out_at, punch_out_lat, punch_out_lng, status, location_status, source — **unique (assignment_id, work_date)** |
-| `attendance_corrections` | attendance_record_id, requested_by_id, requested_punch_in, requested_punch_out, reason, status, reviewed_by_id, reviewed_at, review_note |
-| `leave_requests` | assignment_id, start_date, end_date, day_type, days_count, reason, status, approver_id, decided_at, decision_note, escalated_at |
+| Table                    | Key fields                                                                                                                                                                             |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `attendance_records`     | assignment_id, work_date, punch_in_at, punch_in_lat, punch_in_lng, punch_out_at, punch_out_lat, punch_out_lng, status, location_status, source — **unique (assignment_id, work_date)** |
+| `attendance_corrections` | attendance_record_id, requested_by_id, requested_punch_in, requested_punch_out, reason, status, reviewed_by_id, reviewed_at, review_note                                               |
+| `leave_requests`         | assignment_id, start_date, end_date, day_type, days_count, reason, status, approver_id, decided_at, decision_note, escalated_at                                                        |
 
 **Operations**
 
-| Table | Key fields |
-|---|---|
-| `daily_logs` | assignment_id, work_date, session_no, topic, hours, notes, submitted_at, locked — unique (assignment_id, work_date, session_no) |
-| `deliverables` | assignment_id, type (syllabus/other_duty), title, description, due_date, status, file_id, completed_at |
-| `assets` | name, category (hardware/accessory/digital), serial_number (unique where not null), status |
-| `asset_issues` | asset_id, assignment_id, issued_by_id, issued_at, issue_serial, issue_notes, returned_at, return_serial, return_notes, status |
+| Table            | Key fields                                                                                                                         |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `daily_logs`     | assignment_id, work_date, session_no, topic, hours, notes, submitted_at, locked — unique (assignment_id, work_date, session_no)    |
+| `deliverables`   | assignment_id, type (syllabus/other_duty), title, description, due_date, status, file_id, completed_at                             |
+| `assets`         | name, category (hardware/accessory/digital), serial_number (unique where not null), status                                         |
+| `asset_issues`   | asset_id, assignment_id, issued_by_id, issued_at, issue_serial, issue_notes, returned_at, return_serial, return_notes, status      |
 | `reimbursements` | trainer_id, assignment_id, category, amount, description, proof_file_id, status, reviewed_by_id, reviewed_at, review_note, paid_at |
-| `flags` | assignment_id, raised_by_id, severity, description, status, action_taken, resolved_by_id, resolved_at, resolution_note |
+| `flags`          | assignment_id, raised_by_id, severity, description, status, action_taken, resolved_by_id, resolved_at, resolution_note             |
 
 **Read model**
 
@@ -617,23 +621,23 @@ Beyond primary keys and the unique constraints above:
 
 ### 7.4 File limits and retention
 
-| Document | Types | Max size | Rationale |
-|---|---|---|---|
-| Resume | pdf, doc, docx | 5 MB | A text CV is well under 1 MB; 5 MB tolerates embedded images |
-| Aadhaar / PAN | jpg, jpeg, png, pdf | 5 MB | A phone photo of an ID card is 2–4 MB |
-| Certificates | pdf, jpg, jpeg, png | 10 MB | Multi-page scanned certificates |
-| Reimbursement proof | jpg, jpeg, png, pdf | 5 MB | Receipt photos |
-| Deliverable | pdf, doc, docx, ppt, pptx, xlsx | 25 MB | Course material with slides |
+| Document            | Types                           | Max size | Rationale                                                    |
+| ------------------- | ------------------------------- | -------- | ------------------------------------------------------------ |
+| Resume              | pdf, doc, docx                  | 5 MB     | A text CV is well under 1 MB; 5 MB tolerates embedded images |
+| Aadhaar / PAN       | jpg, jpeg, png, pdf             | 5 MB     | A phone photo of an ID card is 2–4 MB                        |
+| Certificates        | pdf, jpg, jpeg, png             | 10 MB    | Multi-page scanned certificates                              |
+| Reimbursement proof | jpg, jpeg, png, pdf             | 5 MB     | Receipt photos                                               |
+| Deliverable         | pdf, doc, docx, ppt, pptx, xlsx | 25 MB    | Course material with slides                                  |
 
 Validation is by **magic bytes**, not by file extension or client-declared MIME type.
 
-| Data | Retention |
-|---|---|
-| Identity documents | 7 years after deboarding, then purged |
-| GPS coordinates | 12 months, then coordinates nulled (attendance record kept) |
-| Audit logs | 3 years |
-| Notifications | 90 days |
-| Rejected candidates | 2 years unless pool-eligible |
+| Data                | Retention                                                   |
+| ------------------- | ----------------------------------------------------------- |
+| Identity documents  | 7 years after deboarding, then purged                       |
+| GPS coordinates     | 12 months, then coordinates nulled (attendance record kept) |
+| Audit logs          | 3 years                                                     |
+| Notifications       | 90 days                                                     |
+| Rejected candidates | 2 years unless pool-eligible                                |
 
 ---
 
@@ -725,13 +729,13 @@ Every list endpoint above supports `?format=csv` where an export is useful.
 
 Four core colours plus neutrals, one light theme, no dark mode (see §15.10):
 
-| Token | Hex | Use |
-|---|---|---|
-| Canvas | `#F7F9F8` | Page background |
-| Surface | `#FFFFFF` | Cards, tables, panels |
-| Primary | `#0F766E` (teal 700) | Actions, active nav, links — 5.4:1 on white |
-| Ink | `#1E293B` (slate 800) | Body text — 13.9:1 on white |
-| Accent | `#B45309` (amber 700) | Pending, warning, overdue — 4.9:1 on white |
+| Token   | Hex                   | Use                                         |
+| ------- | --------------------- | ------------------------------------------- |
+| Canvas  | `#F7F9F8`             | Page background                             |
+| Surface | `#FFFFFF`             | Cards, tables, panels                       |
+| Primary | `#0F766E` (teal 700)  | Actions, active nav, links — 5.4:1 on white |
+| Ink     | `#1E293B` (slate 800) | Body text — 13.9:1 on white                 |
+| Accent  | `#B45309` (amber 700) | Pending, warning, overdue — 4.9:1 on white  |
 
 Semantic status colours derive from these three plus a single red (`#B91C1C`) reserved for
 destructive actions and errors. Every status is communicated by **label plus colour**, never colour
@@ -764,32 +768,32 @@ Settings & Users     (Super Admin)
 
 ### 9.4 Admin screens
 
-| Screen | Content |
-|---|---|
-| **Dashboard** | KPI tiles (open positions, interviews today, active trainers, pending approvals, open flags), an action queue of items awaiting *this user*, recent activity |
-| **Open Positions** | Card grid; each card shows title, project, headcount, applicant count, and a stage breakdown bar. Opening a card replaces the content area with the applications table |
-| **Applications table** | Rows: candidate, project, position, contact, email, resume link, LinkedIn, applied date, status. Row actions: screening decision, view candidate, schedule interview. Bulk screening supported |
-| **Interview Pipeline** | Position cards with pipeline counts → position detail with three tabs: *Scheduled* (sortable, includes not-yet-scheduled with an inline schedule form), *Conducted* (outcome + recording link), *Missed* (reschedule inline) |
-| **Offer Letters** | Tabs *Draft*, *Sent* (sub-filters accepted / declined / awaiting), *All history*. Row expands to show every version of that offer |
-| **Running Projects** | Project cards (client, dates, headcount, today's attendance %) → project detail with a trainer roster showing name, lead badge, today's status, punch in/out |
-| **Trainer profile** | Header (name, code, project, status) + tabs: Overview (contact, work email, joining date, salary — permission-gated), Documents, Assignments, Attendance, Daily Log, Deliverables, Leave, Assets, Reimbursements, Flags |
-| **Deboarding** | Project list → deboarded/deboarding trainers with last working day, asset reconciliation state, F&F status. Row expands into the full checklist |
-| **Talent Pool** | Searchable table with filters (last status, reason, worked-before, position, project) and a "Consider for position" action |
-| **Flags** | Queue of open flags with severity, trainer, project, raiser, age; resolve with an action |
-| **Audit Log** | Filterable by actor, entity, action, date range; row expands to a before/after diff; CSV export |
+| Screen                 | Content                                                                                                                                                                                                                      |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Dashboard**          | KPI tiles (open positions, interviews today, active trainers, pending approvals, open flags), an action queue of items awaiting _this user_, recent activity                                                                 |
+| **Open Positions**     | Card grid; each card shows title, project, headcount, applicant count, and a stage breakdown bar. Opening a card replaces the content area with the applications table                                                       |
+| **Applications table** | Rows: candidate, project, position, contact, email, resume link, LinkedIn, applied date, status. Row actions: screening decision, view candidate, schedule interview. Bulk screening supported                               |
+| **Interview Pipeline** | Position cards with pipeline counts → position detail with three tabs: _Scheduled_ (sortable, includes not-yet-scheduled with an inline schedule form), _Conducted_ (outcome + recording link), _Missed_ (reschedule inline) |
+| **Offer Letters**      | Tabs _Draft_, _Sent_ (sub-filters accepted / declined / awaiting), _All history_. Row expands to show every version of that offer                                                                                            |
+| **Running Projects**   | Project cards (client, dates, headcount, today's attendance %) → project detail with a trainer roster showing name, lead badge, today's status, punch in/out                                                                 |
+| **Trainer profile**    | Header (name, code, project, status) + tabs: Overview (contact, work email, joining date, salary — permission-gated), Documents, Assignments, Attendance, Daily Log, Deliverables, Leave, Assets, Reimbursements, Flags      |
+| **Deboarding**         | Project list → deboarded/deboarding trainers with last working day, asset reconciliation state, F&F status. Row expands into the full checklist                                                                              |
+| **Talent Pool**        | Searchable table with filters (last status, reason, worked-before, position, project) and a "Consider for position" action                                                                                                   |
+| **Flags**              | Queue of open flags with severity, trainer, project, raiser, age; resolve with an action                                                                                                                                     |
+| **Audit Log**          | Filterable by actor, entity, action, date range; row expands to a before/after diff; CSV export                                                                                                                              |
 
 ### 9.5 Trainer screens
 
-| Screen | Content |
-|---|---|
-| **Home** | Punch in/out card (large, primary action), today's status, document-completion banner if pending, leave balance, open items |
-| **My Profile** | Personal details, document upload cards with per-document status and reject reasons |
-| **Attendance** | Monthly calendar + list view, punch times, status per day, raise correction |
-| **Daily Log** | Today's sessions with an add-session form; past days read-only once submitted |
-| **Deliverables** | Syllabus and Other Duties lists with completion toggles and file attachments |
-| **Leave** | Balance card, request form (date range, half-day toggle), request history with status |
-| **Reimbursements** | Submit form (amount, category, description, proof) and history with status |
-| **Resources** | Issued assets with serial numbers, issue dates, and digital resources such as work email |
+| Screen             | Content                                                                                                                     |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| **Home**           | Punch in/out card (large, primary action), today's status, document-completion banner if pending, leave balance, open items |
+| **My Profile**     | Personal details, document upload cards with per-document status and reject reasons                                         |
+| **Attendance**     | Monthly calendar + list view, punch times, status per day, raise correction                                                 |
+| **Daily Log**      | Today's sessions with an add-session form; past days read-only once submitted                                               |
+| **Deliverables**   | Syllabus and Other Duties lists with completion toggles and file attachments                                                |
+| **Leave**          | Balance card, request form (date range, half-day toggle), request history with status                                       |
+| **Reimbursements** | Submit form (amount, category, description, proof) and history with status                                                  |
+| **Resources**      | Issued assets with serial numbers, issue dates, and digital resources such as work email                                    |
 
 ### 9.6 State handling rules (non-negotiable)
 
@@ -850,11 +854,11 @@ diverge.
 
 Three error classes, mapped by a single global filter:
 
-| Class | HTTP | Example |
-|---|---|---|
-| Validation | 400 / 422 | Malformed body, unknown query param, failed Zod schema |
-| Domain rule | 409 | "Already punched in today", "Leave balance exceeded", "Illegal status transition" |
-| Authorisation | 401 / 403 | Missing token, wrong role, out-of-scope resource |
+| Class         | HTTP      | Example                                                                           |
+| ------------- | --------- | --------------------------------------------------------------------------------- |
+| Validation    | 400 / 422 | Malformed body, unknown query param, failed Zod schema                            |
+| Domain rule   | 409       | "Already punched in today", "Leave balance exceeded", "Illegal status transition" |
+| Authorisation | 401 / 403 | Missing token, wrong role, out-of-scope resource                                  |
 
 Every domain rule violation returns a **specific** `type` and human-readable `detail` — never a
 generic message. Unexpected errors return 500 with a `traceId` and nothing else; the full stack
@@ -877,11 +881,11 @@ goes to the logs, correlated by that id.
 
 ### 11.3 Validation split
 
-| Kind | Where |
-|---|---|
-| Shape, type, format, length | Zod, shared by client and server |
-| Business rules (balances, transitions, ownership) | Server domain services only |
-| Structural invariants (uniqueness, referential integrity) | Database constraints |
+| Kind                                                      | Where                            |
+| --------------------------------------------------------- | -------------------------------- |
+| Shape, type, format, length                               | Zod, shared by client and server |
+| Business rules (balances, transitions, ownership)         | Server domain services only      |
+| Structural invariants (uniqueness, referential integrity) | Database constraints             |
 
 Client-side validation exists for responsiveness; the server never trusts it.
 
@@ -891,11 +895,11 @@ Client-side validation exists for responsiveness; the server never trusts it.
 
 ### 12.1 Environments
 
-| Env | Runs on | Data | Purpose |
-|---|---|---|---|
-| **Local** | Docker Compose — api, worker, postgres, minio, mailpit | Seeded | Development |
-| **Staging** | Single EC2 + RDS | Seeded, refreshable | Verification, demos |
-| **Production** | Single EC2 + RDS (Multi-AZ) | Real | Live |
+| Env            | Runs on                                                | Data                | Purpose             |
+| -------------- | ------------------------------------------------------ | ------------------- | ------------------- |
+| **Local**      | Docker Compose — api, worker, postgres, minio, mailpit | Seeded              | Development         |
+| **Staging**    | Single EC2 + RDS                                       | Seeded, refreshable | Verification, demos |
+| **Production** | Single EC2 + RDS (Multi-AZ)                            | Real                | Live                |
 
 ### 12.2 Local setup
 
@@ -956,20 +960,20 @@ Terraform, because the application holds no local state.
 
 ## 13. Testing Strategy
 
-| Layer | Tool | Scope | Gate |
-|---|---|---|---|
-| Unit | Vitest | Domain services, state machines, balance calculations, date/IST helpers | 85% lines on `modules/**/*.service.ts`; **100% on transition tables** |
-| Integration | Vitest + Supertest + Testcontainers | Every endpoint against a real Postgres — validation, persistence, side effects | All endpoints exercised |
-| Permission | Vitest, table-driven | The §3.2 matrix executed cell by cell: every role × every endpoint, asserting allow or deny | 100% of the matrix |
-| Workflow | Vitest | Every legal transition succeeds; every illegal transition returns 409 | 100% of transitions |
-| Contract | Vitest | Shared Zod schemas validate real API responses, catching client/server drift | All shared schemas |
-| E2E | Playwright | Seven critical journeys (§13.1) | All green before deploy |
-| Smoke | Playwright | Login + dashboard load per role, run post-deploy against the live environment | All green |
+| Layer       | Tool                                | Scope                                                                                       | Gate                                                                  |
+| ----------- | ----------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Unit        | Vitest                              | Domain services, state machines, balance calculations, date/IST helpers                     | 85% lines on `modules/**/*.service.ts`; **100% on transition tables** |
+| Integration | Vitest + Supertest + Testcontainers | Every endpoint against a real Postgres — validation, persistence, side effects              | All endpoints exercised                                               |
+| Permission  | Vitest, table-driven                | The §3.2 matrix executed cell by cell: every role × every endpoint, asserting allow or deny | 100% of the matrix                                                    |
+| Workflow    | Vitest                              | Every legal transition succeeds; every illegal transition returns 409                       | 100% of transitions                                                   |
+| Contract    | Vitest                              | Shared Zod schemas validate real API responses, catching client/server drift                | All shared schemas                                                    |
+| E2E         | Playwright                          | Seven critical journeys (§13.1)                                                             | All green before deploy                                               |
+| Smoke       | Playwright                          | Login + dashboard load per role, run post-deploy against the live environment               | All green                                                             |
 
 ### 13.1 E2E journeys
 
-1. HR creates a position → adds a candidate → screens *proceed* → schedules an interview
-2. Interviewer records *selected* → HR sends offer → candidate accepts → converted to trainer
+1. HR creates a position → adds a candidate → screens _proceed_ → schedules an interview
+2. Interviewer records _selected_ → HR sends offer → candidate accepts → converted to trainer
 3. Trainer first login → forced password change → uploads documents → HR verifies
 4. Trainer punches in and out; duplicate punch is rejected; correction requested and approved
 5. Trainer requests half-day leave → Project Lead approves → attendance reflects it → balance decrements
@@ -992,28 +996,28 @@ Terraform, because the application holds no local state.
 
 Numbered so they can be individually overridden.
 
-| # | Assumption |
-|---|---|
-| A1 | Single organisation, single tenant. No white-labelling. |
-| A2 | Currency is INR throughout; no multi-currency. |
-| A3 | All operational times are IST (Asia/Kolkata). Stored UTC, rendered IST. India has no DST. |
-| A4 | Reimbursement approval ceiling for HR is **₹10,000**; above that requires Manager approval. (The original ceiling was never stated.) |
-| A5 | Leave allowance is **3 full-day equivalents per assignment**, half-day = 0.5, no carry-over. |
-| A6 | Attendance grace period is **15 minutes**, configurable per project. |
-| A7 | Working week is Monday–Saturday by default, configurable per project; holidays are configurable org-wide and per project. |
-| A8 | A trainer may hold multiple concurrent assignments; leave balance is tracked per assignment. |
-| A9 | Interviews are single-interviewer. Panel interviews are modelled as multiple rounds. |
-| A10 | Offer letters are sent outside the system; ManagedOps records status and optionally stores the sent PDF. |
-| A11 | Work email is an address recorded by an administrator. ManagedOps does not provision mailboxes. |
+| #   | Assumption                                                                                                                                              |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | Single organisation, single tenant. No white-labelling.                                                                                                 |
+| A2  | Currency is INR throughout; no multi-currency.                                                                                                          |
+| A3  | All operational times are IST (Asia/Kolkata). Stored UTC, rendered IST. India has no DST.                                                               |
+| A4  | Reimbursement approval ceiling for HR is **₹10,000**; above that requires Manager approval. (The original ceiling was never stated.)                    |
+| A5  | Leave allowance is **3 full-day equivalents per assignment**, half-day = 0.5, no carry-over.                                                            |
+| A6  | Attendance grace period is **15 minutes**, configurable per project.                                                                                    |
+| A7  | Working week is Monday–Saturday by default, configurable per project; holidays are configurable org-wide and per project.                               |
+| A8  | A trainer may hold multiple concurrent assignments; leave balance is tracked per assignment.                                                            |
+| A9  | Interviews are single-interviewer. Panel interviews are modelled as multiple rounds.                                                                    |
+| A10 | Offer letters are sent outside the system; ManagedOps records status and optionally stores the sent PDF.                                                |
+| A11 | Work email is an address recorded by an administrator. ManagedOps does not provision mailboxes.                                                         |
 | A12 | Candidate intake is manual by HR in v1; the `source` field and the application model are built so a public apply page can feed the same pipeline later. |
-| A13 | Email is the only external notification channel in v1. No SMS or WhatsApp. |
-| A14 | GPS is captured for record-keeping only. A denied location permission does not block a punch. |
-| A15 | Attendance is self-service by the trainer; there is no biometric or badge integration. |
-| A16 | Employee codes are system-generated and sequential per year (`MO-2026-0001`). |
-| A17 | Uploaded files are validated by magic bytes; antivirus scanning is deferred to v1.1 (the `scan_status` column exists now). |
-| A18 | Notification preferences are not user-configurable in v1; transactional email always sends. |
-| A19 | Reporting is dashboard summaries plus CSV export. No BI tool integration. |
-| A20 | Browser support: last two versions of Chrome, Edge, Safari and Firefox. No IE. |
+| A13 | Email is the only external notification channel in v1. No SMS or WhatsApp.                                                                              |
+| A14 | GPS is captured for record-keeping only. A denied location permission does not block a punch.                                                           |
+| A15 | Attendance is self-service by the trainer; there is no biometric or badge integration.                                                                  |
+| A16 | Employee codes are system-generated and sequential per year (`MO-2026-0001`).                                                                           |
+| A17 | Uploaded files are validated by magic bytes; antivirus scanning is deferred to v1.1 (the `scan_status` column exists now).                              |
+| A18 | Notification preferences are not user-configurable in v1; transactional email always sends.                                                             |
+| A19 | Reporting is dashboard summaries plus CSV export. No BI tool integration.                                                                               |
+| A20 | Browser support: last two versions of Chrome, Edge, Safari and Firefox. No IE.                                                                          |
 
 ---
 
@@ -1022,6 +1026,7 @@ Numbered so they can be individually overridden.
 Each item states what the reference documents asked for, what this specification does instead, and why.
 
 ### 15.1 Candidate status enum reduced from 15 values to a two-entity model
+
 **Was:** one candidate status enum containing `offer_unsent`, `offer_sent`, `offer_accepted`,
 `offer_rejected`, `offer_revision_requested`, `in_pool`, `past_employee` and more.
 **Now:** a `Candidate` (the person) with a small status, an `Application` (person + position) that
@@ -1031,12 +1036,14 @@ a dual-write bug waiting to happen. Separating person from application is also w
 Talent Pool genuinely reusable, since one person can have many applications over years.
 
 ### 15.2 `in_pool` and `past_employee` are no longer statuses
+
 **Now:** the Talent Pool is a derived query over pool-eligible candidates and re-hire-eligible
 deboarded trainers.
 **Why:** a record cannot be both "rejected in interview" and "in pool" if those are the same field.
 Deriving the pool means it can never be stale.
 
 ### 15.3 Trainer status enum split into three concepts
+
 **Was:** `credentials_generated`, `password_change_required`, `active`, `on_leave`, `half_day`,
 `leave_without_pay`, `flagged`, `deboarded`, `reusable_pool`, `archived` — all in one field.
 **Now:** employment lifecycle (`pending_onboarding → active → deboarding → deboarded → archived`),
@@ -1046,7 +1053,8 @@ flags as their own records.
 person. Conflating them makes it impossible to answer "was this trainer active in March?"
 
 ### 15.4 Leave approval simplified from three-way parallel to single approver with escalation
-**Was:** every leave request goes to Head Trainer *and* Project HR *and* Project Manager.
+
+**Was:** every leave request goes to Head Trainer _and_ Project HR _and_ Project Manager.
 **Now:** the Project Lead decides; if undecided after 24 hours it escalates to the Manager and HR,
 either of whom may decide. Any single approval is sufficient.
 **Why:** requiring three people to act on a one-day leave against a three-day allowance is process
@@ -1054,6 +1062,7 @@ for its own sake. The escalation preserves the real requirement — leave never 
 three approval queues, three notification paths and a partial-approval state to reason about.
 
 ### 15.5 Flag recipient picker removed
+
 **Was:** the Project Lead selects one or more recipients from a list of project-associated HR and
 managers.
 **Now:** a flag automatically notifies the project's assigned Manager and HR.
@@ -1062,6 +1071,7 @@ should see it. The picker adds a UI, a join table and a way to send a flag to th
 no gain.
 
 ### 15.6 Interviewer role scoped down (resolving a contradiction in the source documents)
+
 **Was:** "Interviewer is an Admin User" who "can create, edit, delete… manage everything across the
 system" — while a separate frozen assumption questioned whether Interviewers should see salary and
 Aadhaar at all.
@@ -1072,6 +1082,7 @@ interview; granting them delete rights over projects and visibility of PAN and s
 exposure with no business justification.
 
 ### 15.7 24-hour document deadline softened from a hard lock to reminders plus visibility
+
 **Was:** trainer "gets 24 hours to upload required documents."
 **Now:** a 24-hour target with reminders at 24 h and 72 h, escalation to the onboarding HR at 72 h,
 and a persistent "documents incomplete" badge. Access is not revoked.
@@ -1080,12 +1091,14 @@ that. Locking a new hire out on day two for a scan they could not take creates s
 delays the project they were hired for.
 
 ### 15.8 Auto-deletion of stale interviews replaced with archival
+
 **Was:** interviews missed for more than 30 days are "automatically deleted or archived."
 **Now:** archived, never deleted. The record and its audit trail persist.
 **Why:** automatically destroying recruitment records is a data-loss and compliance hazard. Archival
 achieves the same clean UI with none of the risk.
 
 ### 15.9 "Every module extractable to a microservice" downgraded to a design principle
+
 **Was:** a stated deliverable.
 **Now:** modules have clean boundaries and communicate through interfaces and events, but no
 extraction scaffolding (per-module deployment, service discovery, distributed transactions) is built.
@@ -1094,12 +1107,14 @@ boundaries clean preserves the option at essentially zero cost; building for the
 speculative work against a need that may never arrive.
 
 ### 15.10 Dark mode dropped
+
 **Was:** "minimal dark mode if needed."
 **Now:** one polished, accessible light theme.
 **Why:** a second theme doubles the surface for every colour and contrast decision. "If needed"
 signals it was never required; it can be added later behind the existing design tokens.
 
 ### 15.11 Separate admin and trainer login pages replaced with one login and role-based redirect
+
 **Was:** a distinct "Welcome Admin" page and a separate trainer login (a request tied to the paused
 OAuth work).
 **Now:** a single login page; the API decides where the authenticated user lands.
@@ -1108,6 +1123,7 @@ a public page that advertises which URL admins use. The split can return in one 
 **This one is easy to reverse — say the word and it goes back.**
 
 ### 15.12 "Generate work email and password" narrowed
+
 **Was:** a UI action to generate a work email and password for a trainer.
 **Now:** an administrator records the work email address assigned by IT; the only credential
 ManagedOps issues is the ManagedOps login.
@@ -1115,48 +1131,54 @@ ManagedOps issues is the ManagedOps login.
 that is not in scope and was almost certainly not intended.
 
 ### 15.13 Travel demoted from a module to fields
+
 **Was:** "Travel Plans" listed as an onboarding component.
 **Now:** travel fields on onboarding (arrival date, mode, cost) and on the deboarding record.
 **Why:** three or four fields do not warrant a module, a screen and an API surface.
 
 ### 15.14 Deliverables "to-do list behaviour" merged into the checklist
+
 **Was:** text entries that "behave like to-do lists" plus a separate uploaded-docs area.
 **Now:** one deliverables list where each item has a title, optional description, optional file
 attachment and a completion state.
 **Why:** these were the same feature described twice.
 
 ### 15.15 Offer PDF gap closed
+
 **Was:** "no PDF generation required" with no statement of how the offer reaches the candidate.
 **Now:** the offer is sent out of band; ManagedOps records the send, the response, and optionally
 stores the PDF that was sent as an attachment.
 **Why:** removes an unstated hole in the workflow at negligible cost.
 
 ### 15.16 Aadhaar and PAN numbers no longer stored as data
+
 **Was:** implied fields on the trainer record.
 **Now:** the uploaded document plus the last four characters only.
 **Why:** storing full government identifiers creates disproportionate breach exposure under India's
 DPDP Act. Verification needs the document; identification needs four characters.
 
 ### 15.17 Standalone Settings and Reporting modules dropped
+
 **Now:** a small key-value settings table with a Super Admin screen, and dashboard summary endpoints
 plus CSV export in place of a reporting module.
 **Why:** neither had enough distinct behaviour to justify a bounded context in v1.
 
 ### 15.18 MongoDB replaced with PostgreSQL
+
 Covered in full in §5.2.
 
 ---
 
 ## 16. Delivery Plan
 
-| Phase | Contents | Estimate |
-|---|---|---|
-| **0 — Foundations** | Monorepo, Docker Compose, Prisma schema + migrations, auth, RBAC, audit, files, notifications, UI shell, CI | 2 weeks |
-| **1 — Recruitment** | Projects, positions, candidates, applications, screening, interviews, offers, reminder jobs | 2 weeks |
-| **2 — Onboarding & workforce** | Offer→trainer conversion, documents, assignments, trainer profile, project roster | 1.5 weeks |
-| **3 — Delivery operations** | Attendance, corrections, leave, daily log, deliverables, assets, reimbursements, flags | 2.5 weeks |
-| **4 — Exit & reuse** | Deboarding, Talent Pool, dashboards, exports | 1 week |
-| **5 — Hardening & deploy** | E2E suite, permission matrix tests, security pass, Terraform, staging, runbooks | 1.5 weeks |
+| Phase                          | Contents                                                                                                    | Estimate  |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------- | --------- |
+| **0 — Foundations**            | Monorepo, Docker Compose, Prisma schema + migrations, auth, RBAC, audit, files, notifications, UI shell, CI | 2 weeks   |
+| **1 — Recruitment**            | Projects, positions, candidates, applications, screening, interviews, offers, reminder jobs                 | 2 weeks   |
+| **2 — Onboarding & workforce** | Offer→trainer conversion, documents, assignments, trainer profile, project roster                           | 1.5 weeks |
+| **3 — Delivery operations**    | Attendance, corrections, leave, daily log, deliverables, assets, reimbursements, flags                      | 2.5 weeks |
+| **4 — Exit & reuse**           | Deboarding, Talent Pool, dashboards, exports                                                                | 1 week    |
+| **5 — Hardening & deploy**     | E2E suite, permission matrix tests, security pass, Terraform, staging, runbooks                             | 1.5 weeks |
 
 **Total: ~10.5 engineer-weeks.** Phases 0–2 produce a demonstrable end-to-end hire; each phase ends
 with tests green and the stack deployable.
@@ -1166,6 +1188,34 @@ with tests green and the stack deployable.
 Google/GitHub SSO for admins · antivirus scanning on upload · public apply page · ALB and
 two-instance rolling deploys · notification preferences · advanced reporting · offer PDF generation
 · mobile app.
+
+---
+
+## 16a. Build Status
+
+**Phase 0 is complete and verified** — monorepo, full data model and migrations,
+authentication, the permission layer, audit trail, file storage, notifications,
+the scheduled-job runner, the UI shell, and CI.
+
+| Check                                   | Result      |
+| --------------------------------------- | ----------- |
+| Shared contract tests                   | 109 passing |
+| API integration tests (real PostgreSQL) | 82 passing  |
+| Browser tests (desktop + mobile)        | 24 passing  |
+| Typecheck, formatting, both builds      | Clean       |
+
+Three changes were made to this specification during Phase 0, each because
+building it surfaced something the document had wrong:
+
+- **§3.2** — a Project Lead now also holds the trainer self-service capabilities,
+  scoped to their own records. A head trainer teaches, so they punch in and take
+  leave like anyone else; the original matrix accidentally denied them both.
+- **§3.2** — the four self-service capabilities are withheld from every
+  administrative role. A Super Admin has no assignment to punch into and no leave
+  balance to spend, so granting them described something the product cannot do.
+- **§11.1** — the trace id is assigned by application middleware rather than by
+  the HTTP logger. It is part of the error contract, so it cannot depend on the
+  logging transport being mounted.
 
 ---
 

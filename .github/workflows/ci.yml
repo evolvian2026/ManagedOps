@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  verify:
+    name: Lint, typecheck, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Integration tests run against a real PostgreSQL, because the invariants
+    # they cover — the one-punch-per-day unique index, referential integrity,
+    # transaction boundaries — do not exist against a mock.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: managedops
+          POSTGRES_PASSWORD: managedops
+          POSTGRES_DB: managedops_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U managedops -d managedops_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://managedops:managedops@localhost:5432/managedops_test?schema=public
+      JWT_ACCESS_SECRET: ci-only-secret-not-used-anywhere-else-0123456789abcdef
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared contracts
+        run: pnpm --filter @managedops/shared build
+
+      - name: Generate Prisma client
+        run: pnpm --filter @managedops/api exec prisma generate
+
+      - name: Check formatting
+        run: pnpm exec prettier --check "**/*.{ts,tsx,json,md,yml,yaml}"
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Apply migrations
+        run: pnpm --filter @managedops/api exec prisma migrate deploy
+
+      - name: Test shared contracts
+        run: pnpm --filter @managedops/shared test
+
+      - name: Test API
+        run: pnpm --filter @managedops/api test
+
+      - name: Build both applications
+        run: pnpm --filter @managedops/api build && pnpm --filter @managedops/web build
+
+  images:
+    name: Build container images
+    runs-on: ubuntu-latest
+    needs: verify
+    # Only publish from main; a pull request proves the images build without
+    # pushing anything.
+    timeout-minutes: 25
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to the registry
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/api.Dockerfile
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build the web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/web.Dockerfile
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ghcr.io/${{ github.repository }}/web:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/web:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web

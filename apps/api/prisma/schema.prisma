@@ -1,0 +1,1006 @@
+// ManagedOps data model.
+//
+// Conventions applied throughout (spec 7.1):
+//   - UUID v7 primary keys, generated in the application so they sort by time
+//   - timestamptz everywhere, always stored UTC and rendered IST
+//   - createdById / updatedById on business records
+//   - soft delete via deletedAt / deletedById; a Prisma extension appends
+//     `deletedAt IS NULL` to reads unless a query explicitly opts out
+//
+// Invariants live here rather than in service code wherever the database can
+// express them — the unique index on (assignmentId, workDate) is what makes the
+// one-punch-per-day rule unbreakable instead of merely checked.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- enums
+
+enum Role {
+  super_admin
+  manager
+  hr
+  interviewer
+  project_lead
+  trainer
+}
+
+enum UserStatus {
+  active
+  disabled
+}
+
+enum ProjectStatus {
+  planned
+  active
+  completed
+  cancelled
+}
+
+enum PositionStatus {
+  open
+  filled
+  closed
+}
+
+enum CandidateStatus {
+  active
+  hired
+  archived
+}
+
+enum ApplicationStatus {
+  applied
+  screening
+  interviewing
+  offer_stage
+  hired
+  rejected_screening
+  rejected_interview
+  not_available
+  offer_declined
+  withdrawn
+}
+
+enum ScreeningOutcome {
+  proceed
+  not_available
+  reject
+}
+
+enum InterviewStatus {
+  scheduled
+  completed
+  missed
+  cancelled
+}
+
+enum InterviewOutcome {
+  pending
+  selected
+  rejected
+}
+
+enum OfferStatus {
+  draft
+  sent
+  accepted
+  declined
+  revision_requested
+  withdrawn
+}
+
+enum TrainerStatus {
+  pending_onboarding
+  active
+  deboarding
+  deboarded
+  archived
+}
+
+enum TrainerDocumentType {
+  aadhaar
+  pan
+  education_certificate
+  experience_certificate
+  photo
+}
+
+enum DocumentStatus {
+  pending
+  verified
+  rejected
+}
+
+enum AssignmentRole {
+  trainer
+  lead
+}
+
+enum AssignmentStatus {
+  active
+  ended
+}
+
+enum AttendanceStatus {
+  present
+  late
+  missing_punch_out
+  correction_pending
+  corrected
+  absent
+  on_leave
+  half_day
+  leave_without_pay
+  holiday
+  weekly_off
+}
+
+enum LocationStatus {
+  captured
+  unavailable
+}
+
+enum CorrectionStatus {
+  pending
+  approved
+  rejected
+}
+
+enum LeaveStatus {
+  submitted
+  escalated
+  approved
+  rejected
+  cancelled
+}
+
+enum LeaveDayType {
+  full
+  half
+}
+
+enum DeliverableType {
+  syllabus
+  other_duty
+}
+
+enum DeliverableStatus {
+  pending
+  in_progress
+  completed
+}
+
+enum AssetCategory {
+  hardware
+  accessory
+  digital
+}
+
+enum AssetStatus {
+  available
+  issued
+  lost
+  damaged
+  retired
+}
+
+enum AssetIssueStatus {
+  issued
+  returned
+  lost
+  damaged
+}
+
+enum ReimbursementStatus {
+  submitted
+  under_review
+  approved
+  rejected
+  reimbursed
+}
+
+enum FlagSeverity {
+  low
+  medium
+  high
+}
+
+enum FlagStatus {
+  raised
+  acknowledged
+  action_taken
+  closed
+}
+
+enum FlagAction {
+  warning
+  leave_without_pay
+  penalty
+  removal
+  none
+}
+
+enum DeboardingStatus {
+  initiated
+  assets_pending
+  fnf_pending
+  completed
+}
+
+enum FnfStatus {
+  pending
+  settled
+  waived
+}
+
+enum FileScanStatus {
+  pending
+  clean
+  infected
+  skipped
+}
+
+enum CandidateSource {
+  referral
+  email
+  whatsapp
+  job_board
+  walk_in
+  pool
+  other
+}
+
+// ---------------------------------------------------------------- identity
+
+model User {
+  id       String     @id
+  email    String     @unique
+  name     String
+  phone    String?
+  role     Role
+  status   UserStatus @default(active)
+
+  passwordHash       String
+  mustChangePassword Boolean   @default(true)
+  lastLoginAt        DateTime?
+
+  // Lockout counters (spec 10.1): five failures in fifteen minutes.
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  deletedById String?
+
+  trainer            Trainer?
+  refreshTokens      RefreshToken[]
+  passwordResets     PasswordReset[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  managedProjects    Project[]           @relation("ProjectManager")
+  hrProjects         Project[]           @relation("ProjectHr")
+  ledProjects        Project[]           @relation("ProjectLead")
+  interviews         Interview[]         @relation("Interviewer")
+  screenedApps       Application[]       @relation("ScreenedBy")
+  verifiedDocuments  TrainerDocument[]   @relation("DocumentVerifier")
+  onboardedTrainers  Trainer[]           @relation("OnboardingHr")
+  uploadedFiles      FileObject[]        @relation("FileUploader")
+  decidedLeave       LeaveRequest[]      @relation("LeaveApprover")
+  reviewedCorrections AttendanceCorrection[] @relation("CorrectionReviewer")
+  requestedCorrections AttendanceCorrection[] @relation("CorrectionRequester")
+  reviewedClaims     Reimbursement[]     @relation("ClaimReviewer")
+  raisedFlags        Flag[]              @relation("FlagRaiser")
+  resolvedFlags      Flag[]              @relation("FlagResolver")
+  issuedAssets       AssetIssue[]        @relation("AssetIssuer")
+  initiatedDeboardings Deboarding[]      @relation("DeboardingInitiator")
+
+  @@index([role, status])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id
+  userId    String
+  // Stored hashed so a database read cannot mint a session.
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  // Set when this token is rotated; presenting a revoked token whose successor
+  // exists means the family is compromised and every token in it is revoked.
+  replacedById String?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model PasswordReset {
+  id        String    @id
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_resets")
+}
+
+model AuditLog {
+  id          String   @id
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  before      Json?
+  after       Json?
+  ip          String?
+  userAgent   String?
+  requestId   String?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+model AppSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("app_settings")
+}
+
+model Notification {
+  id         String    @id
+  userId     String
+  type       String
+  title      String
+  body       String
+  entityType String?
+  entityId   String?
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------- files
+
+model FileObject {
+  id             String         @id
+  storageKey     String         @unique
+  originalName   String
+  mimeType       String
+  sizeBytes      Int
+  checksumSha256 String?
+  // What the file belongs to. Left null until `confirm` attaches it, which is
+  // how the weekly orphan sweep finds abandoned uploads.
+  ownerType      String?
+  ownerId        String?
+  uploadedById   String
+  scanStatus     FileScanStatus @default(pending)
+  confirmedAt    DateTime?
+  createdAt      DateTime       @default(now())
+  deletedAt      DateTime?
+
+  uploadedBy       User              @relation("FileUploader", fields: [uploadedById], references: [id])
+  candidateResumes Candidate[]
+  trainerDocuments TrainerDocument[]
+  offerAttachments Offer[]
+  deliverables     Deliverable[]
+  claimProofs      Reimbursement[]
+
+  @@index([ownerType, ownerId])
+  @@index([confirmedAt])
+  @@map("files")
+}
+
+// ---------------------------------------------------------------- projects
+
+model Project {
+  id            String        @id
+  name          String
+  code          String        @unique
+  clientName    String
+  location      String?
+  startDate     DateTime      @db.Date
+  endDate       DateTime?     @db.Date
+  status        ProjectStatus @default(planned)
+
+  managerId     String
+  hrId          String
+  leadTrainerId String?
+
+  /// Local start of the working day, as HH:MM in IST.
+  workStartTime String @default("09:00")
+  /// Minutes after workStartTime still counted as on time (spec assumption A6).
+  graceMinutes  Int    @default(15)
+  /// Days of the week that are non-working; 0 is Sunday.
+  weeklyOffDays Int[]  @default([0])
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  deletedById String?
+
+  manager     User         @relation("ProjectManager", fields: [managerId], references: [id])
+  hr          User         @relation("ProjectHr", fields: [hrId], references: [id])
+  leadTrainer User?        @relation("ProjectLead", fields: [leadTrainerId], references: [id])
+  positions   Position[]
+  assignments Assignment[]
+  holidays    Holiday[]
+
+  @@index([status, startDate])
+  @@index([managerId])
+  @@index([hrId])
+  @@index([deletedAt])
+  @@map("projects")
+}
+
+model Position {
+  id          String         @id
+  projectId   String
+  title       String
+  headcount   Int            @default(1)
+  filledCount Int            @default(0)
+  description String?
+  status      PositionStatus @default(open)
+  closedAt    DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  deletedById String?
+
+  project      Project       @relation(fields: [projectId], references: [id])
+  applications Application[]
+
+  @@index([projectId, status])
+  @@index([status])
+  @@map("positions")
+}
+
+model Holiday {
+  id        String   @id
+  /// Null means the holiday applies organisation-wide.
+  projectId String?
+  date      DateTime @db.Date
+  name      String
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, date])
+  @@index([date])
+  @@map("holidays")
+}
+
+// ---------------------------------------------------------------- recruitment
+
+/// The person. Deliberately thin: pipeline state lives on Application so one
+/// person can hold many applications over years without their statuses fighting
+/// (spec 15.1).
+model Candidate {
+  id           String          @id
+  name         String
+  email        String          @unique
+  phone        String
+  linkedinUrl  String?
+  source       CandidateSource @default(other)
+  resumeFileId String?
+  status       CandidateStatus @default(active)
+  /// Whether this person may be surfaced in the Talent Pool.
+  poolEligible Boolean         @default(true)
+  /// True once they have completed an assignment with us.
+  workedBefore Boolean         @default(false)
+  notes        String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  deletedById String?
+
+  resumeFile   FileObject?   @relation(fields: [resumeFileId], references: [id])
+  applications Application[]
+  trainer      Trainer?
+
+  @@index([status, poolEligible])
+  @@index([createdAt(sort: Desc)])
+  @@index([deletedAt])
+  @@map("candidates")
+}
+
+/// One person applied to one position. This is what actually moves through the
+/// recruitment pipeline.
+model Application {
+  id          String            @id
+  candidateId String
+  positionId  String
+  status      ApplicationStatus @default(applied)
+
+  screeningOutcome ScreeningOutcome?
+  screeningNotes   String?
+  screenedById     String?
+  screenedAt       DateTime?
+  rejectionReason  String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  deletedById String?
+
+  candidate  Candidate   @relation(fields: [candidateId], references: [id])
+  position   Position    @relation(fields: [positionId], references: [id])
+  screenedBy User?       @relation("ScreenedBy", fields: [screenedById], references: [id])
+  interviews Interview[]
+  offers     Offer[]
+
+  @@unique([candidateId, positionId])
+  @@index([positionId, status])
+  @@index([candidateId, createdAt(sort: Desc)])
+  @@index([status])
+  @@map("applications")
+}
+
+model Interview {
+  id              String           @id
+  applicationId   String
+  round           Int              @default(1)
+  scheduledAt     DateTime
+  durationMinutes Int              @default(45)
+  meetingUrl      String?
+  interviewerId   String?
+  status          InterviewStatus  @default(scheduled)
+  outcome         InterviewOutcome @default(pending)
+  feedback        String?
+  recordingUrl    String?
+  conductedAt     DateTime?
+
+  /// Set on a round created to replace a missed one, so the trail is intact.
+  previousInterviewId String?    @unique
+  archivedAt          DateTime?
+
+  /// Guards against a reminder job double-sending after a retry.
+  dayReminderSentAt      DateTime?
+  imminentReminderSentAt DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  deletedById String?
+
+  application      Application @relation(fields: [applicationId], references: [id])
+  interviewer      User?       @relation("Interviewer", fields: [interviewerId], references: [id])
+  previousInterview Interview? @relation("Reschedule", fields: [previousInterviewId], references: [id])
+  nextInterview     Interview? @relation("Reschedule")
+
+  @@unique([applicationId, round])
+  @@index([status, scheduledAt])
+  @@index([interviewerId, scheduledAt])
+  @@index([archivedAt])
+  @@map("interviews")
+}
+
+/// Offers are versioned: a revision is a new row at version + 1, never an
+/// overwrite, so "previous records" is simply every row (spec 15.1, 4.3).
+model Offer {
+  id            String      @id
+  applicationId String
+  version       Int         @default(1)
+  salaryAnnual  Decimal     @db.Decimal(12, 2)
+  joiningDate   DateTime    @db.Date
+  status        OfferStatus @default(draft)
+  sentAt        DateTime?
+  respondedAt   DateTime?
+  notes         String?
+  /// The letter is sent out of band; storing what was sent is optional.
+  attachmentFileId String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  deletedById String?
+
+  application    Application @relation(fields: [applicationId], references: [id])
+  attachmentFile FileObject? @relation(fields: [attachmentFileId], references: [id])
+
+  @@unique([applicationId, version])
+  @@index([status, createdAt(sort: Desc)])
+  @@map("offers")
+}
+
+// ---------------------------------------------------------------- workforce
+
+model Trainer {
+  id           String        @id
+  userId       String        @unique
+  candidateId  String?       @unique
+  employeeCode String        @unique
+  personalEmail String
+  workEmail    String?
+  phone        String
+  joiningDate  DateTime?     @db.Date
+  salaryAnnual Decimal?      @db.Decimal(12, 2)
+  status       TrainerStatus @default(pending_onboarding)
+  /// The HR who onboarded them — kept for provenance; approvals route by project.
+  onboardingHrId String?
+  rehireEligible Boolean     @default(true)
+
+  /// Arrival travel recorded at onboarding (spec 15.13 — fields, not a module).
+  travelArrivalDate DateTime? @db.Date
+  travelMode        String?
+  travelCost        Decimal?  @db.Decimal(10, 2)
+
+  documentsCompletedAt   DateTime?
+  documentReminderStage  Int       @default(0)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  deletedById String?
+
+  user          User              @relation(fields: [userId], references: [id])
+  candidate     Candidate?        @relation(fields: [candidateId], references: [id])
+  onboardingHr  User?             @relation("OnboardingHr", fields: [onboardingHrId], references: [id])
+  documents     TrainerDocument[]
+  assignments   Assignment[]
+  reimbursements Reimbursement[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("trainers")
+}
+
+model TrainerDocument {
+  id        String              @id
+  trainerId String
+  docType   TrainerDocumentType
+  fileId    String?
+  /// Aadhaar and PAN numbers are never stored in full (spec 15.16); four
+  /// characters is enough to identify a document without holding the identifier.
+  lastFour  String?
+  status    DocumentStatus      @default(pending)
+  verifiedById String?
+  verifiedAt   DateTime?
+  rejectReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer    Trainer     @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  file       FileObject? @relation(fields: [fileId], references: [id])
+  verifiedBy User?       @relation("DocumentVerifier", fields: [verifiedById], references: [id])
+
+  @@unique([trainerId, docType])
+  @@index([status])
+  @@map("trainer_documents")
+}
+
+model Assignment {
+  id        String           @id
+  trainerId String
+  projectId String
+  role      AssignmentRole   @default(trainer)
+  startDate DateTime         @db.Date
+  endDate   DateTime?        @db.Date
+  status    AssignmentStatus @default(active)
+  /// Per assignment, never carried over (spec assumption A5).
+  leaveAllowanceDays Decimal @default(3) @db.Decimal(4, 1)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  deletedById String?
+
+  trainer     Trainer                @relation(fields: [trainerId], references: [id])
+  project     Project                @relation(fields: [projectId], references: [id])
+  attendance  AttendanceRecord[]
+  leave       LeaveRequest[]
+  dailyLogs   DailyLog[]
+  deliverables Deliverable[]
+  assetIssues AssetIssue[]
+  flags       Flag[]
+  deboarding  Deboarding?
+  reimbursements Reimbursement[]
+
+  @@index([projectId, status])
+  @@index([trainerId, status])
+  @@map("assignments")
+}
+
+// ---------------------------------------------------------------- attendance
+
+model AttendanceRecord {
+  id           String           @id
+  assignmentId String
+  workDate     DateTime         @db.Date
+  punchInAt    DateTime?
+  punchInLat   Decimal?         @db.Decimal(9, 6)
+  punchInLng   Decimal?         @db.Decimal(9, 6)
+  punchOutAt   DateTime?
+  punchOutLat  Decimal?         @db.Decimal(9, 6)
+  punchOutLng  Decimal?         @db.Decimal(9, 6)
+  status       AttendanceStatus
+  locationStatus LocationStatus @default(captured)
+  /// `self` for a trainer punch, `system` for a job-written day, `correction`
+  /// once an approved correction has rewritten the times.
+  source       String           @default("self")
+  notes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignment  Assignment             @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  corrections AttendanceCorrection[]
+
+  // The invariant behind "one punch-in and one punch-out per day": duplicates
+  // are impossible at the storage layer, not merely rejected by a service.
+  @@unique([assignmentId, workDate])
+  @@index([workDate, status])
+  @@index([assignmentId, workDate(sort: Desc)])
+  @@map("attendance_records")
+}
+
+model AttendanceCorrection {
+  id                 String           @id
+  attendanceRecordId String
+  requestedById      String
+  requestedPunchIn   DateTime?
+  requestedPunchOut  DateTime?
+  reason             String
+  status             CorrectionStatus @default(pending)
+  reviewedById       String?
+  reviewedAt         DateTime?
+  reviewNote         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attendanceRecord AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Cascade)
+  requestedBy      User             @relation("CorrectionRequester", fields: [requestedById], references: [id])
+  reviewedBy       User?            @relation("CorrectionReviewer", fields: [reviewedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([attendanceRecordId])
+  @@map("attendance_corrections")
+}
+
+model LeaveRequest {
+  id           String       @id
+  assignmentId String
+  startDate    DateTime     @db.Date
+  endDate      DateTime     @db.Date
+  dayType      LeaveDayType @default(full)
+  daysCount    Decimal      @db.Decimal(4, 1)
+  /// Days beyond the remaining balance, recorded as leave without pay.
+  unpaidDays   Decimal      @default(0) @db.Decimal(4, 1)
+  reason       String
+  status       LeaveStatus  @default(submitted)
+  approverId   String?
+  decidedAt    DateTime?
+  decisionNote String?
+  escalatedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  approver   User?      @relation("LeaveApprover", fields: [approverId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([assignmentId, startDate(sort: Desc)])
+  @@map("leave_requests")
+}
+
+// ---------------------------------------------------------------- operations
+
+model DailyLog {
+  id           String    @id
+  assignmentId String
+  workDate     DateTime  @db.Date
+  sessionNo    Int
+  topic        String
+  hours        Decimal   @db.Decimal(4, 2)
+  notes        String?
+  submittedAt  DateTime?
+  locked       Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, workDate, sessionNo])
+  @@index([assignmentId, workDate(sort: Desc)])
+  @@map("daily_logs")
+}
+
+model Deliverable {
+  id           String            @id
+  assignmentId String
+  type         DeliverableType
+  title        String
+  description  String?
+  dueDate      DateTime?         @db.Date
+  status       DeliverableStatus @default(pending)
+  fileId       String?
+  completedAt  DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+
+  assignment Assignment  @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  file       FileObject? @relation(fields: [fileId], references: [id])
+
+  @@index([assignmentId, type, status])
+  @@map("deliverables")
+}
+
+model Asset {
+  id           String        @id
+  name         String
+  category     AssetCategory
+  /// Null for digital resources such as a work email account.
+  serialNumber String?       @unique
+  status       AssetStatus   @default(available)
+  notes        String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  deletedById String?
+
+  issues AssetIssue[]
+
+  @@index([status, category])
+  @@map("assets")
+}
+
+model AssetIssue {
+  id           String           @id
+  assetId      String
+  assignmentId String
+  issuedById   String
+  issuedAt     DateTime         @default(now())
+  /// Recorded at issue and compared on return (spec 4.8).
+  issueSerial  String?
+  issueNotes   String?
+  returnedAt   DateTime?
+  returnSerial String?
+  returnNotes  String?
+  status       AssetIssueStatus @default(issued)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  asset      Asset      @relation(fields: [assetId], references: [id])
+  assignment Assignment @relation(fields: [assignmentId], references: [id])
+  issuedBy   User       @relation("AssetIssuer", fields: [issuedById], references: [id])
+
+  @@index([assignmentId, status])
+  @@index([assetId, status])
+  @@map("asset_issues")
+}
+
+model Reimbursement {
+  id           String              @id
+  trainerId    String
+  assignmentId String?
+  category     String
+  amount       Decimal             @db.Decimal(10, 2)
+  description  String
+  proofFileId  String
+  status       ReimbursementStatus @default(submitted)
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+  paidAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer    Trainer     @relation(fields: [trainerId], references: [id])
+  assignment Assignment? @relation(fields: [assignmentId], references: [id])
+  proofFile  FileObject  @relation(fields: [proofFileId], references: [id])
+  reviewedBy User?       @relation("ClaimReviewer", fields: [reviewedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([trainerId, createdAt(sort: Desc)])
+  @@map("reimbursements")
+}
+
+model Flag {
+  id           String       @id
+  assignmentId String
+  raisedById   String
+  severity     FlagSeverity @default(medium)
+  description  String
+  status       FlagStatus   @default(raised)
+  actionTaken  FlagAction?
+  resolvedById String?
+  resolvedAt   DateTime?
+  resolutionNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  raisedBy   User       @relation("FlagRaiser", fields: [raisedById], references: [id])
+  resolvedBy User?      @relation("FlagResolver", fields: [resolvedById], references: [id])
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([assignmentId])
+  @@map("flags")
+}
+
+model Deboarding {
+  id             String           @id
+  assignmentId   String           @unique
+  initiatedById  String
+  lastWorkingDay DateTime         @db.Date
+  reason         String
+  status         DeboardingStatus @default(initiated)
+  assetsReconciled Boolean        @default(false)
+  travelNotes    String?
+  fnfStatus      FnfStatus        @default(pending)
+  fnfAmount      Decimal?         @db.Decimal(12, 2)
+  fnfSettledAt   DateTime?
+  feedback       String?
+  completedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignment  Assignment @relation(fields: [assignmentId], references: [id])
+  initiatedBy User       @relation("DeboardingInitiator", fields: [initiatedById], references: [id])
+
+  @@index([status])
+  @@map("deboardings")
+}
