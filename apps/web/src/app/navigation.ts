@@ -25,6 +25,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
 
   // Trainer self-service.
   {
+    label: 'My Profile',
+    path: '/my/profile',
+    capability: 'trainers.upload_documents',
+    section: 'work',
+  },
+  {
     label: 'My Attendance',
     path: '/my/attendance',
     capability: 'attendance.punch',

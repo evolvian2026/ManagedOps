@@ -23,6 +23,8 @@ export interface Harness {
   close: () => Promise<void>;
   seedUser: (options: SeedUserOptions) => Promise<SeededUser>;
   signIn: (email: string, password?: string) => Promise<Session>;
+  /** Gives an account a known password, e.g. one created by offer conversion. */
+  setPassword: (userId: string, password?: string) => Promise<void>;
 }
 
 export interface SeedUserOptions {
@@ -87,6 +89,18 @@ export async function createHarness(): Promise<Harness> {
         },
       });
       return { id: user.id, email: user.email, password, role: user.role };
+    },
+
+    async setPassword(userId: string, password = TEST_PASSWORD): Promise<void> {
+      await prisma.db.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash: await passwords.hash(password),
+          mustChangePassword: false,
+          failedLoginCount: 0,
+          lockedUntil: null,
+        },
+      });
     },
 
     async signIn(email: string, password = TEST_PASSWORD): Promise<Session> {

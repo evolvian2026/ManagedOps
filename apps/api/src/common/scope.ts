@@ -128,3 +128,43 @@ export function offerScope(user: AuthenticatedUser, capability: Capability = 'of
   const scope = requireScope(user, capability);
   return scope === 'all' ? {} : MATCH_NOTHING;
 }
+
+/**
+ * Trainers the caller may see.
+ *
+ * A trainer sees themselves; a project lead sees the people on the project they
+ * lead; HR and managers see everyone. Note this is only *which trainers* — a
+ * lead seeing a colleague's row still cannot open their salary or documents,
+ * because those are separate capabilities they do not hold.
+ */
+export function trainerScope(user: AuthenticatedUser, capability: Capability = 'trainers.read') {
+  const scope = requireScope(user, capability);
+  if (scope === 'all') return {};
+  if (scope === 'own') {
+    return user.trainerId ? { id: user.trainerId } : MATCH_NOTHING;
+  }
+  if (scope === 'project') {
+    return user.ledProjectIds.length > 0
+      ? { assignments: { some: { projectId: { in: user.ledProjectIds } } } }
+      : MATCH_NOTHING;
+  }
+  return MATCH_NOTHING;
+}
+
+/** Assignments the caller may see. */
+export function assignmentScope(
+  user: AuthenticatedUser,
+  capability: Capability = 'assignments.read',
+) {
+  const scope = requireScope(user, capability);
+  if (scope === 'all') return {};
+  if (scope === 'own') {
+    return user.trainerId ? { trainerId: user.trainerId } : MATCH_NOTHING;
+  }
+  if (scope === 'project') {
+    return user.ledProjectIds.length > 0
+      ? { projectId: { in: user.ledProjectIds } }
+      : MATCH_NOTHING;
+  }
+  return MATCH_NOTHING;
+}

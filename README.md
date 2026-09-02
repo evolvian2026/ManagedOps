@@ -131,12 +131,20 @@ screening, the interview pipeline with IST reminders and 30-day archival,
 versioned offers, and the three Onboarding screens: Open Positions, Interview
 Pipeline and Offer Letters.
 
-Phases 2 to 5 add onboarding, delivery operations, exit and hardening.
+**Phase 2 (onboarding and workforce)** — an accepted offer becomes a working
+trainer in one transaction: a login, an employee code, a document checklist and a
+project assignment. Documents are uploaded and verified (Aadhaar and PAN keep
+only their last four characters), reminders go out at 24 and 72 hours with an
+escalation to HR, and a trainer becomes active exactly when every mandatory
+document is verified and they have somewhere to work. Screens: Running Projects,
+the project roster, a trainer's profile, and the trainer's own My Profile.
+
+Phases 3 to 5 add delivery operations, exit and hardening.
 `docs/SPECIFICATION.md` §16 has the plan. Screens whose module has not landed yet
 say so rather than showing invented data.
 
 | Suite                             | Count |
 | --------------------------------- | ----- |
 | Shared contracts                  | 109   |
-| API integration (real PostgreSQL) | 136   |
-| Browser (desktop + mobile)        | 37    |
+| API integration (real PostgreSQL) | 160   |
+| Browser (desktop + mobile)        | 52    |

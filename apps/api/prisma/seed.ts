@@ -334,6 +334,73 @@ async function main(): Promise<void> {
     });
   }
 
+  // ------------------------------------------------------------- documents
+  // Active trainers have their paperwork verified; one newer hire is still
+  // partway through, so the onboarding checklist has a real state to show.
+  const mandatoryDocs = ['aadhaar', 'pan', 'education_certificate'] as const;
+
+  for (const [index, trainer] of trainers.entries()) {
+    const midOnboarding = index === trainers.length - 1;
+
+    for (const docType of mandatoryDocs) {
+      const existing = await prisma.trainerDocument.findUnique({
+        where: { trainerId_docType: { trainerId: trainer.trainerId, docType } },
+      });
+      if (existing) continue;
+
+      // The last trainer has Aadhaar verified, PAN rejected and nothing else in.
+      const state =
+        !midOnboarding || docType === 'aadhaar'
+          ? 'verified'
+          : docType === 'pan'
+            ? 'rejected'
+            : 'pending';
+
+      const fileId = state === 'pending' ? null : uuidv7();
+      if (fileId) {
+        await prisma.fileObject.create({
+          data: {
+            id: fileId,
+            storageKey: `identity/${trainer.trainerId}/${docType}.pdf`,
+            originalName: `${docType}.pdf`,
+            mimeType: 'application/pdf',
+            sizeBytes: 96_000,
+            uploadedById: trainer.userId,
+            ownerType: 'TrainerDocument',
+            confirmedAt: daysFromToday(-40),
+            scanStatus: 'skipped',
+          },
+        });
+      }
+
+      await prisma.trainerDocument.create({
+        data: {
+          id: uuidv7(),
+          trainerId: trainer.trainerId,
+          docType,
+          fileId,
+          lastFour: docType === 'aadhaar' ? '4821' : docType === 'pan' ? 'K7Z1' : null,
+          status: state,
+          rejectReason: state === 'rejected' ? 'The scan is cut off along the bottom edge.' : null,
+          verifiedById: state === 'pending' ? null : users.hr!.id,
+          verifiedAt: state === 'pending' ? null : daysFromToday(-39),
+        },
+      });
+    }
+
+    if (midOnboarding) {
+      // Status follows the facts: paperwork outstanding means still onboarding.
+      await prisma.trainer.update({
+        where: { id: trainer.trainerId },
+        data: { status: 'pending_onboarding', documentsCompletedAt: null },
+      });
+      await prisma.user.update({
+        where: { id: trainer.userId },
+        data: { mustChangePassword: false },
+      });
+    }
+  }
+
   // ------------------------------------------------------- pipeline states
   // Walks a few candidates to different stages so every Onboarding screen has
   // something real to show rather than three empty states.

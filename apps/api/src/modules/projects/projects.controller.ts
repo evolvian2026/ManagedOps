@@ -18,13 +18,17 @@ import {
 } from '../../common/decorators/index.js';
 import { validate } from '../../common/pipes/zod-validation.pipe.js';
 import { ProjectsService } from './projects.service.js';
+import { AssignmentsService } from '../workforce/assignments.service.js';
 
 @ApiTags('projects')
 @ApiBearerAuth()
 @Audited('Project')
 @Controller('api/v1/projects')
 export class ProjectsController {
-  constructor(private readonly projects: ProjectsService) {}
+  constructor(
+    private readonly projects: ProjectsService,
+    private readonly assignments: AssignmentsService,
+  ) {}
 
   @Get()
   @RequireCapability('projects.read')
@@ -69,6 +73,13 @@ export class ProjectsController {
   @ApiOperation({ summary: 'Soft-delete a project that has never been staffed' })
   remove(@Param('id', validate(uuidSchema)) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.projects.remove(id, user);
+  }
+
+  @Get(':id/roster')
+  @RequireCapability('assignments.read')
+  @ApiOperation({ summary: "The project's active trainers with today's attendance" })
+  roster(@Param('id', validate(uuidSchema)) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.assignments.roster(id, user);
   }
 
   @Get(':id/holidays')

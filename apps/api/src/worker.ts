@@ -6,6 +6,7 @@ import { AppModule } from './app.module.js';
 import { OPERATIONAL_TZ, SCHEDULED_JOBS, createBoss, safely } from './jobs/scheduler.js';
 import { FilesService } from './modules/files/files.service.js';
 import { InterviewJobs } from './jobs/interview-jobs.js';
+import { OnboardingJobs } from './jobs/onboarding-jobs.js';
 
 /**
  * The scheduled-work process.
@@ -14,9 +15,9 @@ import { InterviewJobs } from './jobs/interview-jobs.js';
  * services, the same configuration — and runs from the same container image with
  * a different entrypoint, so the two can never drift apart in behaviour.
  *
- * Handlers arrive with the module that owns them. Document reminders land in
- * phase 2, attendance and leave in phase 3; until then those jobs are registered
- * but warn at boot rather than silently doing nothing.
+ * Handlers arrive with the module that owns them. Attendance and leave land in
+ * phase 3; until then those jobs are registered but warn at boot rather than
+ * silently doing nothing.
  */
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Worker');
@@ -24,6 +25,7 @@ async function bootstrap(): Promise<void> {
   const config = app.get(ConfigService);
   const files = app.get(FilesService);
   const interviewJobs = app.get(InterviewJobs);
+  const onboardingJobs = app.get(OnboardingJobs);
 
   const boss = await createBoss(config.getOrThrow<string>('databaseUrl'));
   boss.on('error', (error) => logger.error({ err: error }, 'Job queue error'));
@@ -37,6 +39,9 @@ async function bootstrap(): Promise<void> {
     },
     'interview.archive.stale': async () => {
       await interviewJobs.archiveStale();
+    },
+    'onboarding.document.remind': async () => {
+      await onboardingJobs.sendDocumentReminders();
     },
     'files.cleanup.orphans': async () => {
       // Anything unattached after a day was abandoned mid-upload.

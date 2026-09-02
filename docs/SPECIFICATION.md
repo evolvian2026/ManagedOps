@@ -1193,7 +1193,7 @@ two-instance rolling deploys · notification preferences · advanced reporting �
 
 ## 16a. Build Status
 
-**Phases 0 and 1 are complete and verified.**
+**Phases 0, 1 and 2 are complete and verified.**
 
 _Phase 0 — foundations:_ monorepo, full data model and migrations, authentication,
 the permission layer, audit trail, file storage, notifications, the scheduled-job
@@ -1203,11 +1203,15 @@ _Phase 1 — recruitment:_ projects and positions, candidates and applications,
 screening, the interview pipeline with IST reminders and archival, versioned
 offers, and the three Onboarding screens.
 
+_Phase 2 — onboarding and workforce:_ offer-to-trainer conversion, employee
+codes, the document checklist with verification and staged reminders, automatic
+activation, assignments and the project roster, and the four workforce screens.
+
 | Check                                   | Result      |
 | --------------------------------------- | ----------- |
 | Shared contract tests                   | 109 passing |
-| API integration tests (real PostgreSQL) | 136 passing |
-| Browser tests (desktop + mobile)        | 37 passing  |
+| API integration tests (real PostgreSQL) | 160 passing |
+| Browser tests (desktop + mobile)        | 52 passing  |
 | Typecheck, formatting, both builds      | Clean       |
 
 ### Corrections this build surfaced
@@ -1238,6 +1242,22 @@ Phase 1:
 - **§4.2** — a candidate may hold only one live application at a time. Without
   it, two projects can interview the same person in parallel without either
   knowing.
+
+Phase 2:
+
+- **§4.3** — a trainer becomes active on two conditions, not one: every mandatory
+  document verified _and_ an assignment to work on. Activating on documents alone
+  produced an active trainer with nothing to do, which the roster then had no
+  honest way to show.
+- **§7** — the temporary password is emailed only after the conversion
+  transaction commits. Sending inside the transaction hands out credentials for
+  an account that may still roll back.
+- **§9** — the checklist is one component serving both HR and the trainer, with
+  `canVerify` and `canUpload` deciding what appears. Two components drift; the
+  same screen with different verbs does not.
+- **§11.2** — Aadhaar and PAN ask for their last four characters _before_ the
+  file is uploaded. Validating afterwards means the file has already gone to
+  storage when the request is refused.
 
 ---
 

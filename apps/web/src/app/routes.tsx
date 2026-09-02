@@ -5,6 +5,8 @@ import { LoginPage } from '../features/auth/login-page';
 import { ChangePasswordPage } from '../features/auth/change-password-page';
 import { DashboardPage } from '../features/dashboard/dashboard-page';
 import { OnboardingPage } from '../features/onboarding/onboarding-page';
+import { RunningProjectsPage } from '../features/workforce/running-projects';
+import { MyProfilePage } from '../features/workforce/my-profile';
 import { PlaceholderPage } from '../features/placeholder-page';
 import { AppShell } from './app-shell';
 import { LoadingState } from '../components/states';
@@ -78,11 +80,7 @@ export function AppRoutes() {
           path="projects"
           element={
             <RequireCapability capability="projects.read">
-              <PlaceholderPage
-                title="Running Projects"
-                phase="phase 2"
-                summary="Projects, their trainer rosters and today's attendance."
-              />
+              <RunningProjectsPage />
             </RequireCapability>
           }
         />
@@ -119,6 +117,14 @@ export function AppRoutes() {
                 phase="phase 3"
                 summary="Concerns raised against a trainer, and the action taken."
               />
+            </RequireCapability>
+          }
+        />
+        <Route
+          path="my/profile"
+          element={
+            <RequireCapability capability="trainers.upload_documents">
+              <MyProfilePage />
             </RequireCapability>
           }
         />

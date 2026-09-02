@@ -5,3 +5,4 @@ export * from './state-machines.js';
 export * from './schemas/common.js';
 export * from './schemas/auth.js';
 export * from './schemas/recruitment.js';
+export * from './schemas/workforce.js';
