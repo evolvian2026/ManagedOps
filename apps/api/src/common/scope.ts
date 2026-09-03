@@ -189,6 +189,11 @@ export function attendanceScope(
   return throughAssignment(user, capability);
 }
 
+/** Feedback the caller may see, through the engagement it was given about. */
+export function reviewScope(user: AuthenticatedUser, capability: Capability = 'reviews.read') {
+  return throughAssignment(user, capability);
+}
+
 /**
  * Corrections reach their assignment through the attendance record they amend.
  *

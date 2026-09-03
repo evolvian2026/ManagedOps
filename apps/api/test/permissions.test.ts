@@ -59,6 +59,10 @@ const ROUTES: RouteUnderTest[] = [
     capabilities: ['matching.read'],
   },
 
+  // Feedback
+  { method: 'get', path: '/api/v1/reviews', capabilities: ['reviews.read'] },
+  { method: 'post', path: '/api/v1/reviews', capabilities: ['reviews.write'], body: {} },
+
   // Payroll
   { method: 'get', path: '/api/v1/payroll/register', capabilities: ['payroll.read'] },
   {

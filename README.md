@@ -284,6 +284,59 @@ not a trainer: the register carries every salary on it.
 
 ---
 
+## The feedback loop
+
+`rehireEligible` drives the whole Talent Pool, and it used to be a tick box with
+nothing behind it. Reviews are the evidence.
+
+A review is recorded against the **assignment** it happened on — you can only
+rate delivered work — and carries a source, an overall score out of five,
+optional scores for knowledge, delivery and professionalism, and a respondent
+count. It is **append-only**: there is no update endpoint and no `updatedAt`. A
+review that turns out to be wrong is withdrawn with a reason and stays visible
+as withdrawn; a correction is a new review. A performance record anybody can
+quietly rewrite is worth much less than one they cannot.
+
+### What the score is allowed to claim
+
+```
+within a source:  weighted by respondents  (forty learners are not one opinion)
+across sources:   averaged equally         (one client is not drowned out by them)
+```
+
+Learners say whether they could follow, a client says whether they would have us
+back, an observer says whether the craft was right. Blending them by headcount
+would let a cohort bury the client, and it is the client who decides whether
+there is more work.
+
+**A thin record says so.** Below three reviews and ten respondents the summary
+reports `confident: false` with a caveat, and the screens show that louder than
+they show the number. A 5.0 from one review rendered like a verdict is exactly
+the figure somebody would act on and should not.
+
+A trend compares the last six months against everything before it, and only
+calls a direction when the move is at least half a point — smaller than that is
+noise, and naming it would get somebody managed on it.
+
+### Who sees what
+
+`reviews.write` belongs to Manager, HR and the project lead who watched the
+session; `reviews.retract` is a Manager's alone. Nobody may review their own
+delivery — a project lead both writes reviews and has a trainer profile, so
+that is enforced in the service, not assumed.
+
+A trainer holds `reviews.read` scoped to themselves and gets their **scores and
+trend without the comments or the names**. Feedback nobody can see cannot
+improve anybody; learner remarks are written under an expectation of anonymity,
+and handing them over verbatim would change what people write. The API omits
+those fields for that caller rather than the client hiding them.
+
+The summary is attached to the deboarding detail and to every past trainer in
+the Talent Pool, which is the entire point: the evidence sits next to the box
+that decides whether we would work with them again.
+
+---
+
 ## Errors
 
 Every failure is an RFC 9457 Problem Details document with a stable `type` and a

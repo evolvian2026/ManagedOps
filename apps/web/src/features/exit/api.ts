@@ -7,6 +7,7 @@ import type {
   PoolSource,
 } from '@managedops/shared';
 import { api } from '../../lib/api';
+import type { ReviewSummary } from '../reviews/api';
 import type { Page } from '../onboarding/api';
 
 /** Queries and mutations for exit, re-use and the dashboard. */
@@ -42,6 +43,8 @@ export interface DeboardingRow {
   };
   /** Present on a single fetch, absent from a list row. */
   blockers?: DeboardingBlockers;
+  /** How they were rated, beside the re-hire decision that rests on it. */
+  quality?: ReviewSummary | null;
 }
 
 export function useDeboardings(params: { open?: boolean; projectId?: string } = {}) {

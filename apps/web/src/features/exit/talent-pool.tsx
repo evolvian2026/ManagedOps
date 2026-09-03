@@ -100,6 +100,7 @@ export function TalentPoolPage() {
               <Th>Contact</Th>
               <Th>Last seen</Th>
               <Th>How it ended</Th>
+              <Th className="text-right">Rated</Th>
               <Th className="text-right">Action</Th>
             </>
           }
@@ -134,6 +135,9 @@ export function TalentPoolPage() {
                 {entry.lastReason ? (
                   <div className="mt-0.5 max-w-xs text-xs text-ink-soft">{entry.lastReason}</div>
                 ) : null}
+              </Td>
+              <Td className="text-right whitespace-nowrap">
+                <PoolRating quality={entry.quality} />
               </Td>
               <Td className="text-right whitespace-nowrap">
                 <div className="flex justify-end gap-2">
@@ -249,5 +253,35 @@ function ConsiderDialog({ entry, onClose }: { entry: PoolEntry | null; onClose: 
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * How a past trainer was rated, in a column's worth of space.
+ *
+ * A candidate has never delivered anything, so there is nothing to have rated
+ * — which is a different statement from a low score and is said differently.
+ * A figure the summary is not confident in is marked, because "5.0" from one
+ * review is exactly the number somebody would act on and should not.
+ */
+function PoolRating({ quality }: { quality: PoolEntry['quality'] }) {
+  if (!quality || quality.overall == null) {
+    return <span className="text-xs text-ink-faint">Not rated</span>;
+  }
+
+  return (
+    <div>
+      <span
+        className={`font-medium tabular-nums ${quality.confident ? 'text-ink' : 'text-ink-soft'}`}
+      >
+        {quality.overall}
+        <span className="text-xs font-normal text-ink-soft"> / 5</span>
+      </span>
+      <div className="text-xs text-ink-soft">
+        {quality.confident
+          ? `${quality.respondentCount} ${quality.respondentCount === 1 ? 'person' : 'people'}`
+          : 'too few to judge'}
+      </div>
+    </div>
   );
 }

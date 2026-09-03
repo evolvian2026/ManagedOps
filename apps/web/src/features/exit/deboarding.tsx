@@ -17,6 +17,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/states';
 import { ApiError, errorMessage } from '../../lib/api';
 import { useAuth } from '../auth/auth-context';
 import { formatDate, formatInr, humanise } from '../onboarding/format';
+import { QualitySummary } from '../reviews/summary';
 import {
   downloadCsv,
   useCompleteDeboarding,
@@ -347,6 +348,17 @@ function ChecklistForm({ record, editable }: { record: DeboardingRow; editable: 
           hint="What they were good at, and what a future project should know."
           onChange={(event) => setFeedback(event.target.value)}
         />
+
+        {/* The evidence, immediately above the box that decides on it. Until
+            feedback existed this was a tick with nothing behind it. */}
+        {record.quality ? (
+          <div className="rounded-md border border-line bg-surface-sunk px-3 py-3">
+            <p className="mb-2 text-xs font-medium tracking-wide text-ink-soft uppercase">
+              How they were rated
+            </p>
+            <QualitySummary summary={record.quality} compact />
+          </div>
+        ) : null}
 
         <label className="flex items-start gap-2.5 text-sm">
           <input

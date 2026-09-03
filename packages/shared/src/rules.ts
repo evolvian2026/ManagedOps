@@ -4,6 +4,7 @@ import {
   PROFICIENCY_RANK,
   type LeaveDayType,
   type Proficiency,
+  type ReviewSource,
   type SkillRequirement,
 } from './enums.js';
 
@@ -811,4 +812,202 @@ export function payrollReadiness(input: {
   }
 
   return { ready: blockers.length === 0, blockers };
+}
+
+/* ----------------------------------------------------------------- reviews */
+
+/**
+ * Turning feedback into something a re-hire decision can rest on.
+ *
+ * Two judgements shape this, and both are about not overclaiming.
+ *
+ * **Sources are averaged, not respondents.** Weighting purely by headcount
+ * would let a forty-learner cohort drown out the client, and it is the client
+ * who decides whether there is more work. Within a source, a cohort's size does
+ * count — a 4.2 from forty learners says more than a 5.0 from one. So the
+ * weighting happens inside a source and the sources are then equals.
+ *
+ * **A number nobody should act on says so.** One review is an anecdote. The
+ * summary reports `confident: false` rather than printing a 5.0 that looks like
+ * a verdict, because a ranking people stop trusting is worse than no ranking.
+ */
+
+export interface ReviewInput {
+  source: ReviewSource;
+  /** One to five. */
+  rating: number;
+  knowledge?: number | null;
+  delivery?: number | null;
+  professionalism?: number | null;
+  /** How many people this aggregates; null means one person speaking. */
+  respondents?: number | null;
+  /** `YYYY-MM-DD`. */
+  observedOn: string;
+  /** Retracted reviews are passed in and ignored, never silently dropped upstream. */
+  retracted?: boolean;
+}
+
+export interface SourceSummary {
+  source: ReviewSource;
+  reviews: number;
+  respondents: number;
+  average: number;
+}
+
+export interface ReviewSummary {
+  /** The mean of the source averages, one to five. Null when there is nothing. */
+  overall: number | null;
+  /** The same over the last six months, so a trend is visible. */
+  recent: number | null;
+  /**
+   * Where it is heading: `improving`, `declining`, or `steady` when the
+   * difference is inside the noise. Null when there is not enough to say.
+   */
+  trend: 'improving' | 'declining' | 'steady' | null;
+  bySource: SourceSummary[];
+  /** Averages per dimension, over the reviews that offered one. */
+  dimensions: { knowledge: number | null; delivery: number | null; professionalism: number | null };
+  reviewCount: number;
+  respondentCount: number;
+  retractedCount: number;
+  /** False when there is too little here to draw a conclusion from. */
+  confident: boolean;
+  /** Why it is not confident, when it is not. */
+  caveat: string | null;
+}
+
+/** Below this, the summary is an anecdote rather than a signal. */
+const CONFIDENT_REVIEWS = 3;
+const CONFIDENT_RESPONDENTS = 10;
+
+/** Half a point on a five-point scale is the smallest move worth calling a trend. */
+const TREND_THRESHOLD = 0.5;
+
+const RECENT_MONTHS = 6;
+
+export function summariseReviews(
+  reviews: readonly ReviewInput[],
+  options: { today?: string } = {},
+): ReviewSummary {
+  const retractedCount = reviews.filter((review) => review.retracted).length;
+  const live = reviews.filter((review) => !review.retracted);
+
+  if (live.length === 0) {
+    return {
+      overall: null,
+      recent: null,
+      trend: null,
+      bySource: [],
+      dimensions: { knowledge: null, delivery: null, professionalism: null },
+      reviewCount: 0,
+      respondentCount: 0,
+      retractedCount,
+      confident: false,
+      caveat: 'Nobody has recorded any feedback yet.',
+    };
+  }
+
+  const bySource = summariseBySource(live);
+  const overall = round2(mean(bySource.map((entry) => entry.average))!);
+
+  const now = options.today ? new Date(`${options.today}T00:00:00Z`) : new Date();
+  const cutoff = new Date(now);
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - RECENT_MONTHS);
+  const cutoffDate = cutoff.toISOString().slice(0, 10);
+
+  const recentReviews = live.filter((review) => review.observedOn >= cutoffDate);
+  const olderReviews = live.filter((review) => review.observedOn < cutoffDate);
+
+  const recent =
+    recentReviews.length > 0
+      ? round2(mean(summariseBySource(recentReviews).map((entry) => entry.average))!)
+      : null;
+  const older =
+    olderReviews.length > 0
+      ? round2(mean(summariseBySource(olderReviews).map((entry) => entry.average))!)
+      : null;
+
+  const respondentCount = live.reduce((total, review) => total + (review.respondents ?? 1), 0);
+
+  return {
+    overall,
+    recent,
+    // A trend needs both halves. With everything in one window there is no
+    // "before" to compare against, and inventing one would be a guess.
+    trend: recent == null || older == null ? null : trendBetween(older, recent),
+    bySource,
+    dimensions: {
+      knowledge: averageOf(live, 'knowledge'),
+      delivery: averageOf(live, 'delivery'),
+      professionalism: averageOf(live, 'professionalism'),
+    },
+    reviewCount: live.length,
+    respondentCount,
+    retractedCount,
+    ...confidenceOf(live.length, respondentCount),
+  };
+}
+
+function summariseBySource(reviews: readonly ReviewInput[]): SourceSummary[] {
+  const grouped = new Map<ReviewSource, ReviewInput[]>();
+  for (const review of reviews) {
+    grouped.set(review.source, [...(grouped.get(review.source) ?? []), review]);
+  }
+
+  return [...grouped.entries()]
+    .map(([source, entries]) => {
+      // Inside a source, a cohort counts for its size: forty learners agreeing
+      // is not one opinion.
+      const weight = entries.reduce((total, entry) => total + (entry.respondents ?? 1), 0);
+      const weighted = entries.reduce(
+        (total, entry) => total + entry.rating * (entry.respondents ?? 1),
+        0,
+      );
+      return {
+        source,
+        reviews: entries.length,
+        respondents: weight,
+        average: round2(weighted / weight),
+      };
+    })
+    .sort((a, b) => a.source.localeCompare(b.source));
+}
+
+function trendBetween(older: number, recent: number): 'improving' | 'declining' | 'steady' {
+  const change = recent - older;
+  if (change >= TREND_THRESHOLD) return 'improving';
+  if (change <= -TREND_THRESHOLD) return 'declining';
+  return 'steady';
+}
+
+function confidenceOf(
+  reviewCount: number,
+  respondentCount: number,
+): { confident: boolean; caveat: string | null } {
+  if (reviewCount >= CONFIDENT_REVIEWS || respondentCount >= CONFIDENT_RESPONDENTS) {
+    return { confident: true, caveat: null };
+  }
+  return {
+    confident: false,
+    caveat:
+      reviewCount === 1
+        ? 'Based on a single review, which is an anecdote rather than a pattern.'
+        : `Based on ${reviewCount} reviews from ${respondentCount} ${respondentCount === 1 ? 'person' : 'people'} — too little to draw a conclusion from.`,
+  };
+}
+
+function averageOf(
+  reviews: readonly ReviewInput[],
+  dimension: 'knowledge' | 'delivery' | 'professionalism',
+): number | null {
+  const scored = reviews
+    .map((review) => review[dimension])
+    .filter((value): value is number => value != null);
+  const average = mean(scored);
+  return average == null ? null : round2(average);
+}
+
+function mean(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((total, value) => total + value, 0) / values.length;
 }

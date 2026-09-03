@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 import { OperationsModule } from '../operations/operations.module.js';
 import { RecruitmentModule } from '../recruitment/recruitment.module.js';
+import { ReviewsModule } from '../reviews/reviews.module.js';
 import { DashboardController, DeboardingController, PoolController } from './exit.controller.js';
 import { DashboardService } from './dashboard.service.js';
 import { DeboardingService } from './deboarding.service.js';
@@ -17,7 +18,7 @@ import { PoolService } from './pool.service.js';
  * a home of its own would mean a module that owns nothing.
  */
 @Module({
-  imports: [NotificationsModule, OperationsModule, RecruitmentModule],
+  imports: [NotificationsModule, OperationsModule, RecruitmentModule, ReviewsModule],
   controllers: [DeboardingController, PoolController, DashboardController],
   providers: [DeboardingService, PoolService, DashboardService],
   exports: [DeboardingService, PoolService],

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ReviewSummary } from '../rules.js';
 import {
   APPLICATION_STATUSES,
   CANDIDATE_SOURCES,
@@ -106,6 +107,14 @@ export interface PoolEntry {
   lastProject: { id: string; name: string } | null;
   lastSeenAt: string;
   employeeCode: string | null;
+  /**
+   * How they were rated while they were here, for a past trainer.
+   *
+   * Null for a candidate who never worked for us — there is nothing to have
+   * rated. The pool exists to answer "would we take them back", and until this
+   * arrived that question was answered by a tick box with nothing behind it.
+   */
+  quality: ReviewSummary | null;
 }
 
 export const considerForPositionSchema = z.object({ positionId: uuidSchema }).strict();

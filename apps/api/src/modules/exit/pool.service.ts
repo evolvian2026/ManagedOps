@@ -6,6 +6,7 @@ import type {
   PoolSource,
 } from '@managedops/shared';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { ReviewsService } from '../reviews/reviews.service.js';
 import { newId } from '../../common/ids.js';
 import { paginate } from '../../common/pagination.js';
 import { DomainRuleProblem, NotFoundProblem } from '../../common/errors.js';
@@ -43,6 +44,7 @@ export class PoolService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly applications: ApplicationsService,
+    private readonly reviews: ReviewsService,
   ) {}
 
   // The caller is accepted or refused wholesale by `pool.read`: every role
@@ -181,6 +183,8 @@ export class PoolService {
             : null,
           lastSeenAt: last.updatedAt.toISOString(),
           employeeCode: null,
+          // Never delivered anything for us, so there is nothing to have rated.
+          quality: null,
         },
       ];
     });
@@ -220,6 +224,8 @@ export class PoolService {
       take: 500,
     });
 
+    const quality = await this.reviews.summaryFor(rows.map((trainer) => trainer.id));
+
     return rows.map<PoolEntry>((trainer) => {
       const last = trainer.assignments[0];
       return {
@@ -235,6 +241,7 @@ export class PoolService {
         lastReason: last?.deboarding?.reason ?? null,
         lastPosition: null,
         lastProject: last ? { id: last.project.id, name: last.project.name } : null,
+        quality: quality.get(trainer.id) ?? null,
         lastSeenAt: (
           last?.deboarding?.completedAt ??
           last?.endDate ??

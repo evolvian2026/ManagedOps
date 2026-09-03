@@ -22,6 +22,16 @@ export const USER_STATUSES = ['active', 'disabled'] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
 
 /**
+ * Where a piece of feedback about a trainer came from.
+ *
+ * Kept apart rather than blended, because the three answer different questions:
+ * learners say whether they could follow, a client says whether they would have
+ * us back, and an observer says whether the craft was right.
+ */
+export const REVIEW_SOURCES = ['learner_batch', 'client', 'internal_observation'] as const;
+export type ReviewSource = (typeof REVIEW_SOURCES)[number];
+
+/**
  * How well somebody knows a skill.
  *
  * Ordered weakest to strongest, and the order is load-bearing: matching

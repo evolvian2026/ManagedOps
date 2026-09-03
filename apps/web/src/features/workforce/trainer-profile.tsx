@@ -19,10 +19,12 @@ import {
 } from './trainer-operations';
 import { TrainerSkillsTab } from '../skills/trainer-skills';
 import { useTrainerSkills } from '../skills/api';
+import { TrainerReviewsTab } from '../reviews/trainer-reviews';
 
 type Tab =
   | 'overview'
   | 'skills'
+  | 'feedback'
   | 'documents'
   | 'assignments'
   | 'attendance'
@@ -101,6 +103,7 @@ export function TrainerProfile({ trainerId, onBack }: { trainerId: string; onBac
             ...(can('skills.read')
               ? [{ id: 'skills' as const, label: 'Skills', count: skills.data?.length }]
               : []),
+            ...(can('reviews.read') ? [{ id: 'feedback' as const, label: 'Feedback' }] : []),
             ...(canSeeDocuments
               ? [
                   {
@@ -130,6 +133,8 @@ export function TrainerProfile({ trainerId, onBack }: { trainerId: string; onBac
         <Overview trainer={trainer.data} />
       ) : tab === 'skills' ? (
         <TrainerSkillsTab trainerId={trainerId} />
+      ) : tab === 'feedback' ? (
+        <TrainerReviewsTab trainerId={trainerId} />
       ) : tab === 'documents' ? (
         documents.isPending ? (
           <LoadingState label="Loading documents" rows={3} />

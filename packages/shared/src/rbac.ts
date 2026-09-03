@@ -22,6 +22,9 @@ export const CAPABILITIES = [
   'skills.catalogue',
   'matching.read',
   'payroll.read',
+  'reviews.read',
+  'reviews.write',
+  'reviews.retract',
   'projects.read',
   'projects.manage',
   'positions.read',
@@ -128,6 +131,9 @@ const MANAGER: Grant = {
     'skills.catalogue',
     'matching.read',
     'payroll.read',
+    'reviews.read',
+    'reviews.write',
+    'reviews.retract',
     'projects.read',
     'projects.manage',
     'positions.read',
@@ -180,6 +186,9 @@ const HR: Grant = grantAll(
   'matching.read',
   // HR runs the month end, so the register is theirs.
   'payroll.read',
+  // HR collects what clients say; retracting one is a manager's call.
+  'reviews.read',
+  'reviews.write',
   'audit.read',
   'projects.read',
   'positions.read',
@@ -241,6 +250,9 @@ const PROJECT_LEAD: Grant = {
   'positions.read': 'project',
   'trainers.read': 'project',
   'skills.read': 'project',
+  // Observing a session and writing it up is what leading a project is.
+  'reviews.read': 'project',
+  'reviews.write': 'project',
   'assignments.read': 'project',
   'attendance.read': 'project',
   'attendance.corrections.approve': 'project',
@@ -277,6 +289,9 @@ const TRAINER: Grant = {
   // A trainer keeps their own skills current; nobody else knows them better.
   'skills.read': 'own',
   'skills.manage': 'own',
+  // Their own scores and trend. Feedback nobody can see cannot improve
+  // anybody; the raw comments are withheld in the service, not here.
+  'reviews.read': 'own',
   'assignments.read': 'own',
   'attendance.read': 'own',
   'attendance.punch': 'own',

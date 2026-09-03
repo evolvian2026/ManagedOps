@@ -1286,6 +1286,121 @@ async function main(): Promise<void> {
     });
   }
 
+  // ---------------------------------------------------------------- feedback
+  //
+  // The evidence behind "would we take them back". Deliberately mixed: the
+  // alumnus is well rated by learners and the client alike, the trainer mid
+  // deboarding has one weak internal observation and a retracted review, and
+  // one person has a single glowing note that the summary refuses to treat as
+  // a verdict. A seed where everybody scores four teaches nothing.
+  const reviewSeeds: {
+    assignmentId: string | undefined;
+    source: 'learner_batch' | 'client' | 'internal_observation';
+    rating: number;
+    knowledge?: number;
+    delivery?: number;
+    professionalism?: number;
+    respondents?: number;
+    comment: string;
+    daysAgo: number;
+    retracted?: string;
+  }[] = [
+    {
+      assignmentId: alumnusAssignment.id,
+      source: 'learner_batch',
+      rating: 4,
+      knowledge: 5,
+      delivery: 4,
+      respondents: 38,
+      comment: 'Explained the hard parts twice without being asked. Pace suited the weaker half.',
+      daysAgo: 200,
+    },
+    {
+      assignmentId: alumnusAssignment.id,
+      source: 'client',
+      rating: 5,
+      knowledge: 5,
+      professionalism: 5,
+      comment: 'Would have them back for the Java cohort without hesitating.',
+      daysAgo: 125,
+    },
+    {
+      assignmentId: alumnusAssignment.id,
+      source: 'internal_observation',
+      rating: 4,
+      delivery: 4,
+      comment: 'Session ran long but the room stayed with it.',
+      daysAgo: 150,
+    },
+    {
+      assignmentId: snehaAssignment?.id,
+      source: 'learner_batch',
+      rating: 5,
+      knowledge: 5,
+      delivery: 5,
+      respondents: 24,
+      comment: 'Best module of the term.',
+      daysAgo: 40,
+    },
+    {
+      assignmentId: snehaAssignment?.id,
+      source: 'client',
+      rating: 4,
+      comment: 'Reliable, and answers email.',
+      daysAgo: 30,
+    },
+    {
+      assignmentId: arjunAssignment?.id,
+      source: 'internal_observation',
+      rating: 2,
+      knowledge: 4,
+      delivery: 2,
+      comment: 'Material was right but the room lost the thread after the first hour.',
+      daysAgo: 20,
+    },
+    {
+      assignmentId: arjunAssignment?.id,
+      source: 'internal_observation',
+      rating: 1,
+      comment: 'Recorded against the wrong session.',
+      daysAgo: 18,
+      retracted: 'Logged against the wrong trainer; the session was somebody else’s.',
+    },
+  ];
+
+  for (const seed of reviewSeeds) {
+    if (!seed.assignmentId) continue;
+
+    const observedOn = dateOnly(daysFromToday(-seed.daysAgo));
+    const existing = await prisma.trainerReview.findFirst({
+      where: { assignmentId: seed.assignmentId, source: seed.source, observedOn },
+    });
+    if (existing) continue;
+
+    await prisma.trainerReview.create({
+      data: {
+        id: uuidv7(),
+        assignmentId: seed.assignmentId,
+        source: seed.source,
+        rating: seed.rating,
+        knowledge: seed.knowledge,
+        delivery: seed.delivery,
+        professionalism: seed.professionalism,
+        respondents: seed.respondents,
+        comment: seed.comment,
+        observedOn,
+        submittedById: users.manager!.id,
+        ...(seed.retracted
+          ? {
+              retractedAt: daysFromToday(-seed.daysAgo + 1),
+              retractedById: users.manager!.id,
+              retractedReason: seed.retracted,
+            }
+          : {}),
+      },
+    });
+  }
+
   // In progress, and blocked: Karan still holds the Dell laptop.
   if (leadAssignment) {
     const open = await prisma.deboarding.findUnique({

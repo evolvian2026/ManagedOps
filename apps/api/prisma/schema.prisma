@@ -36,6 +36,18 @@ enum UserStatus {
   disabled
 }
 
+/// Where a piece of feedback about a trainer came from.
+///
+/// Kept apart rather than averaged into one number, because the three answer
+/// different questions: learners say whether they could follow, a client says
+/// whether they would have us back, and an observer says whether the craft was
+/// right. A single blended score hides which of those went wrong.
+enum ReviewSource {
+  learner_batch
+  client
+  internal_observation
+}
+
 /// How well somebody knows a skill. Ordered, and compared as an order.
 enum Proficiency {
   beginner
@@ -323,6 +335,8 @@ model User {
   reviewedCorrections AttendanceCorrection[] @relation("CorrectionReviewer")
   requestedCorrections AttendanceCorrection[] @relation("CorrectionRequester")
   reviewedClaims     Reimbursement[]     @relation("ClaimReviewer")
+  authoredReviews    TrainerReview[]     @relation("ReviewAuthor")
+  retractedReviews   TrainerReview[]     @relation("ReviewRetractor")
   raisedFlags        Flag[]              @relation("FlagRaiser")
   resolvedFlags      Flag[]              @relation("FlagResolver")
   issuedAssets       AssetIssue[]        @relation("AssetIssuer")
@@ -448,6 +462,52 @@ model FileObject {
 }
 
 // ---------------------------------------------------------------- projects
+
+/// ----------------------------------------------------------------- reviews
+///
+/// What delivery was actually like, recorded against the engagement it
+/// happened on.
+///
+/// Append-only on purpose. This is the evidence behind a re-hire decision, and
+/// a performance record anybody can quietly rewrite is worth much less than one
+/// they cannot. A review that turns out to be wrong is retracted with a reason
+/// and stays visible as retracted; the correction is a new review.
+model TrainerReview {
+  id           String       @id
+  assignmentId String
+  source       ReviewSource
+
+  /// Overall, one to five.
+  rating          Int
+  /// The dimensions that make an overall score actionable. Null when whoever
+  /// recorded it did not have a view.
+  knowledge       Int?
+  delivery        Int?
+  professionalism Int?
+
+  /// How many people this aggregates — a cohort's worth of learner feedback is
+  /// one row. Null for a single client or observer speaking for themselves.
+  respondents Int?
+  comment     String?
+  /// The day the work being judged happened, not the day it was typed up.
+  observedOn  DateTime @db.Date
+
+  submittedById String
+  createdAt     DateTime @default(now())
+
+  /// Withdrawn rather than deleted, so the record of it having been said stays.
+  retractedAt     DateTime?
+  retractedById   String?
+  retractedReason String?
+
+  assignment  Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  submittedBy User       @relation("ReviewAuthor", fields: [submittedById], references: [id])
+  retractedBy User?      @relation("ReviewRetractor", fields: [retractedById], references: [id])
+
+  @@index([assignmentId, observedOn(sort: Desc)])
+  @@index([source, observedOn])
+  @@map("trainer_reviews")
+}
 
 /// ------------------------------------------------------------------- skills
 ///
@@ -908,6 +968,7 @@ model Assignment {
   flags       Flag[]
   deboarding  Deboarding?
   reimbursements Reimbursement[]
+  reviews     TrainerReview[]
 
   @@index([projectId, status])
   @@index([trainerId, status])

@@ -3,6 +3,7 @@ import { ErrorState, LoadingState } from '../../components/states';
 import { formatDate, formatInr, humanise } from '../onboarding/format';
 import { DocumentChecklist } from './document-checklist';
 import { TrainerSkillsTab } from '../skills/trainer-skills';
+import { TrainerReviewsTab } from '../reviews/trainer-reviews';
 import { useMyProfile, useTrainerDocuments } from './api';
 
 /**
@@ -93,6 +94,13 @@ export function MyProfilePage() {
         >
           <TrainerSkillsTab trainerId={trainer.id} showIntro={false} />
         </Card>
+      </div>
+
+      {/* Their own scores and trend. The API withholds the individual comments
+          and who wrote them, so this renders what it is given rather than
+          deciding for itself what a trainer may see. */}
+      <div className="mt-5">
+        <TrainerReviewsTab trainerId={trainer.id} self />
       </div>
     </>
   );

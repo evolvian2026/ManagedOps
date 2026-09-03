@@ -18,6 +18,7 @@ import { deboardingScope, scopedWhere } from '../../common/scope.js';
 import type { AuthenticatedUser } from '../../common/decorators/index.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { AssignmentContext } from '../operations/assignment-context.js';
+import { ReviewsService } from '../reviews/reviews.service.js';
 
 const SORTABLE = ['lastWorkingDay', 'createdAt', 'status'] as const;
 
@@ -79,6 +80,7 @@ export class DeboardingService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly context: AssignmentContext,
+    private readonly reviews: ReviewsService,
   ) {}
 
   async create(input: CreateDeboardingInput, actor: AuthenticatedUser) {
@@ -185,7 +187,20 @@ export class DeboardingService {
       select: DEBOARDING_SELECT,
     });
     if (!deboarding) throw new NotFoundProblem('That deboarding');
-    return { ...deboarding, blockers: await this.blockers(deboarding.assignment.id, deboarding) };
+
+    // The evidence, beside the decision. Marking somebody re-hire eligible is
+    // what puts them in the Talent Pool, and until now it was a box ticked with
+    // nothing behind it.
+    const [blockers, quality] = await Promise.all([
+      this.blockers(deboarding.assignment.id, deboarding),
+      this.reviews.summaryFor([deboarding.assignment.trainer.id]),
+    ]);
+
+    return {
+      ...deboarding,
+      blockers,
+      quality: quality.get(deboarding.assignment.trainer.id) ?? null,
+    };
   }
 
   /**
