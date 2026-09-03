@@ -132,6 +132,21 @@ export class AssignmentsService {
       );
     }
 
+    // Nobody is in two places at once. The database refuses this outright for
+    // two full-time postings; checking here first is what turns a constraint
+    // violation into a sentence naming the project standing in the way.
+    if (input.allocationPercent === 100) {
+      const clash = await this.findFullTimeClash(trainerId, input);
+      if (clash) {
+        throw new DomainRuleProblem(
+          'already-committed',
+          `${trainer.user.name} is on ${clash.project.name} full time ${
+            clash.endDate ? `until ${toIstDateString(clash.endDate)}` : 'with no agreed end date'
+          }, so they cannot take this on as well. End that assignment first, or give both a part-time allocation.`,
+        );
+      }
+    }
+
     const assignment = await this.prisma.db.assignment.create({
       data: {
         id: newId(),
@@ -141,6 +156,7 @@ export class AssignmentsService {
         startDate: new Date(input.startDate),
         endDate: input.endDate ? new Date(input.endDate) : null,
         leaveAllowanceDays: new Prisma.Decimal(input.leaveAllowanceDays),
+        allocationPercent: input.allocationPercent,
         // Inherited from the contract, not asked for here. HR staffs projects
         // and does not hold `billing.manage`, so making them type a rate would
         // either block the assignment or invite a guess; the client's agreed
@@ -246,6 +262,32 @@ export class AssignmentsService {
       where: { id: assignmentId },
       data: { billRatePerDay: input.billRatePerDay, updatedById: actor.userId },
       select: assignmentSelect(actor),
+    });
+  }
+
+  /**
+   * An overlapping full-time assignment, if there is one.
+   *
+   * Half-open on the end date to match the database's exclusion constraint
+   * exactly: an assignment ending on the 30th does not clash with one starting
+   * on the 1st, and disagreeing with the constraint here would produce a
+   * refusal the database would have allowed, or worse, the reverse.
+   */
+  private async findFullTimeClash(trainerId: string, input: CreateAssignmentInput) {
+    const start = new Date(input.startDate);
+    const end = input.endDate ? new Date(input.endDate) : null;
+
+    return this.prisma.db.assignment.findFirst({
+      where: {
+        trainerId,
+        status: 'active',
+        allocationPercent: 100,
+        // Overlap: theirs starts on or before ours ends, and ends on or after
+        // ours starts. A null end date is open-ended and so always overlaps.
+        ...(end ? { startDate: { lte: end } } : {}),
+        OR: [{ endDate: null }, { endDate: { gte: start } }],
+      },
+      select: { id: true, endDate: true, project: { select: { name: true } } },
     });
   }
 }

@@ -14,6 +14,7 @@ import { ApprovalsPage } from '../features/operations/approvals';
 import { FlagsPage } from '../features/operations/flags';
 import { DeboardingPage } from '../features/exit/deboarding';
 import { TalentPoolPage } from '../features/exit/talent-pool';
+import { FindTrainersPage } from '../features/skills/find-trainers';
 import { ClientsPage } from '../features/commercial/clients';
 import { MarginPage } from '../features/commercial/margin';
 import { AuditLogPage } from '../features/admin/audit-log';
@@ -91,6 +92,14 @@ export function AppRoutes() {
           element={
             <RequireCapability capability="projects.read">
               <RunningProjectsPage />
+            </RequireCapability>
+          }
+        />
+        <Route
+          path="find-trainers"
+          element={
+            <RequireCapability capability="matching.read">
+              <FindTrainersPage />
             </RequireCapability>
           }
         />

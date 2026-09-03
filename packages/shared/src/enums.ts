@@ -21,6 +21,27 @@ export const GLOBAL_ADMIN_ROLES: readonly Role[] = ['super_admin', 'manager', 'h
 export const USER_STATUSES = ['active', 'disabled'] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
 
+/**
+ * How well somebody knows a skill.
+ *
+ * Ordered weakest to strongest, and the order is load-bearing: matching
+ * compares levels, so `PROFICIENCY_RANK` below is derived from this array
+ * rather than written out again.
+ */
+export const PROFICIENCIES = ['beginner', 'intermediate', 'advanced', 'expert'] as const;
+export type Proficiency = (typeof PROFICIENCIES)[number];
+
+/** Where each level sits in that order, for comparing one against another. */
+export const PROFICIENCY_RANK: Readonly<Record<Proficiency, number>> = Object.fromEntries(
+  PROFICIENCIES.map((level, index) => [level, index]),
+) as Record<Proficiency, number>;
+
+export const SKILL_REQUIREMENTS = ['essential', 'desirable'] as const;
+export type SkillRequirement = (typeof SKILL_REQUIREMENTS)[number];
+
+export const SKILL_STATUSES = ['active', 'archived'] as const;
+export type SkillStatus = (typeof SKILL_STATUSES)[number];
+
 /** A client is either somebody we currently work for or somebody we do not. */
 export const CLIENT_STATUSES = ['active', 'inactive'] as const;
 export type ClientStatus = (typeof CLIENT_STATUSES)[number];

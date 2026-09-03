@@ -36,6 +36,25 @@ enum UserStatus {
   disabled
 }
 
+/// How well somebody knows a skill. Ordered, and compared as an order.
+enum Proficiency {
+  beginner
+  intermediate
+  advanced
+  expert
+}
+
+/// Whether a position can be filled without a skill, or cannot.
+enum SkillRequirement {
+  essential
+  desirable
+}
+
+enum SkillStatus {
+  active
+  archived
+}
+
 enum ClientStatus {
   active
   inactive
@@ -430,6 +449,80 @@ model FileObject {
 
 // ---------------------------------------------------------------- projects
 
+/// ------------------------------------------------------------------- skills
+///
+/// A canonical catalogue, deliberately not free text on the trainer.
+/// "React", "ReactJS" and "react.js" typed into three profiles are three
+/// skills that never match each other, which is precisely the failure that
+/// makes a matching feature useless.
+model Skill {
+  id       String      @id
+  name     String      @unique
+  /// A loose grouping for the picker — "Frontend", "Data", "Soft skills".
+  category String?
+  status   SkillStatus @default(active)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  deletedById String?
+
+  trainers  TrainerSkill[]
+  positions PositionSkill[]
+
+  @@index([status, name])
+  @@map("skills")
+}
+
+/// What a trainer can teach, and how well.
+model TrainerSkill {
+  id          String      @id
+  trainerId   String
+  skillId     String
+  proficiency Proficiency @default(intermediate)
+  /// Years of hands-on experience, to one decimal place.
+  years       Decimal?    @db.Decimal(4, 1)
+  /// When they last taught or used it. A skill nobody has used in four years
+  /// is a different proposition from the same skill used last month, and the
+  /// ranking says so rather than pretending they are equal.
+  lastUsedOn  DateTime?   @db.Date
+  notes       String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+
+  trainer Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  skill   Skill   @relation(fields: [skillId], references: [id], onDelete: Restrict)
+
+  @@unique([trainerId, skillId])
+  @@index([skillId, proficiency])
+  @@map("trainer_skills")
+}
+
+/// What a position needs, and whether it can be filled without it.
+model PositionSkill {
+  id             String           @id
+  positionId     String
+  skillId        String
+  requirement    SkillRequirement @default(essential)
+  /// The floor, when one matters. Null means any level counts.
+  minProficiency Proficiency?
+
+  createdAt   DateTime @default(now())
+  createdById String?
+
+  position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  skill    Skill    @relation(fields: [skillId], references: [id], onDelete: Restrict)
+
+  @@unique([positionId, skillId])
+  @@index([skillId])
+  @@map("position_skills")
+}
+
 /// ------------------------------------------------------------------ clients
 ///
 /// The organisation a project is delivered for, and the commercial terms it is
@@ -530,8 +623,9 @@ model Position {
   deletedAt   DateTime?
   deletedById String?
 
-  project      Project       @relation(fields: [projectId], references: [id])
+  project      Project         @relation(fields: [projectId], references: [id])
   applications Application[]
+  skills       PositionSkill[]
 
   @@index([projectId, status])
   @@index([status])
@@ -733,6 +827,7 @@ model Trainer {
   candidate     Candidate?        @relation(fields: [candidateId], references: [id])
   onboardingHr  User?             @relation("OnboardingHr", fields: [onboardingHrId], references: [id])
   documents     TrainerDocument[]
+  skills        TrainerSkill[]
   assignments   Assignment[]
   reimbursements Reimbursement[]
 
@@ -776,6 +871,15 @@ model Assignment {
   status    AssignmentStatus @default(active)
   /// Per assignment, never carried over (spec assumption A5).
   leaveAllowanceDays Decimal @default(3) @db.Decimal(4, 1)
+
+  /// How much of the trainer's working time this assignment takes, as a
+  /// percentage.
+  ///
+  /// The default is the common case: deployed to one client, full time. It
+  /// exists so "who is free" has an answer that is not merely "assigned to
+  /// nothing" — a trainer at 60% has real capacity left, and a matching
+  /// feature that could not see it would keep sending them nobody.
+  allocationPercent Int @default(100)
 
   /// What the client pays per day this trainer delivers, in INR.
   ///

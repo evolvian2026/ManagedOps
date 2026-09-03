@@ -376,6 +376,10 @@ describe('the rate on an assignment', () => {
 
     // Staffed by HR, who holds no billing capability at all: the rate has to
     // arrive from the contract, because they are given no way to type one.
+    //
+    // Part time, because the trainer already holds a full-time posting on the
+    // first project and nobody is in two places at once — splitting them across
+    // two engagements is the only way this second assignment can exist.
     await harness
       .http()
       .post(`/api/v1/trainers/${context.trainerId}/assignments`)
@@ -385,6 +389,7 @@ describe('the rate on an assignment', () => {
         role: 'trainer',
         startDate: '2026-07-01',
         leaveAllowanceDays: 3,
+        allocationPercent: 40,
       })
       .expect(201);
 

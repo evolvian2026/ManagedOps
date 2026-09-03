@@ -1,4 +1,11 @@
-import { LEAVE_DAY_TYPES, type LeaveDayType } from './enums.js';
+import {
+  LEAVE_DAY_TYPES,
+  PROFICIENCIES,
+  PROFICIENCY_RANK,
+  type LeaveDayType,
+  type Proficiency,
+  type SkillRequirement,
+} from './enums.js';
 
 /**
  * Business constants and the pure calculations that depend on them. Kept free of
@@ -354,4 +361,296 @@ export function computeMargin(input: MarginInput): Margin {
 /** Money is summed and compared, so it is rounded here rather than at each display. */
 function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+/* ---------------------------------------------------------------- matching */
+
+/**
+ * Scoring a trainer against what a position needs.
+ *
+ * The output is a number and a list of sentences, and the sentences are the
+ * point. A ranked list of people with a bare "87" against each name tells a
+ * staffer nothing they can act on or argue with, so every component of the
+ * score also states itself in words.
+ *
+ * Two rules shape the arithmetic:
+ *
+ *  - An essential skill that is missing is disqualifying, not merely costly.
+ *    Ranking somebody top because they are strong on four desirable skills
+ *    while lacking the one thing the position exists for is exactly the
+ *    plausible-looking answer that makes people stop trusting the tool.
+ *  - Recency counts. A skill last used four years ago is a different
+ *    proposition from the same skill used last month, and pretending they are
+ *    equal would flatter a stale profile.
+ */
+
+export interface RequiredSkill {
+  skillId: string;
+  name: string;
+  requirement: SkillRequirement;
+  /** The floor, when one matters. Null means any level counts. */
+  minProficiency?: Proficiency | null;
+}
+
+export interface HeldSkill {
+  skillId: string;
+  proficiency: Proficiency;
+  years?: number | null;
+  /** `YYYY-MM-DD`, or null when nobody has said. */
+  lastUsedOn?: string | null;
+}
+
+export interface SkillMatch {
+  skillId: string;
+  name: string;
+  requirement: SkillRequirement;
+  held: boolean;
+  proficiency: Proficiency | null;
+  /** Held, but below the level the position asked for. */
+  belowRequestedLevel: boolean;
+}
+
+export interface MatchResult {
+  /** 0 to 100. Zero when an essential skill is missing. */
+  score: number;
+  /** True when every essential skill is held at or above the level asked for. */
+  eligible: boolean;
+  matches: SkillMatch[];
+  /** Plain sentences explaining the score, strongest reason first. */
+  reasons: string[];
+}
+
+/** Weights: essentials carry the decision, the rest adjust it. */
+const ESSENTIAL_WEIGHT = 60;
+const DESIRABLE_WEIGHT = 25;
+const DEPTH_WEIGHT = 10;
+const RECENCY_WEIGHT = 5;
+
+/** Beyond this, a skill is treated as stale rather than current. */
+const STALE_AFTER_MONTHS = 24;
+
+export function scoreMatch(
+  required: readonly RequiredSkill[],
+  held: readonly HeldSkill[],
+  options: { today?: string } = {},
+): MatchResult {
+  const byId = new Map(held.map((skill) => [skill.skillId, skill]));
+  const essentials = required.filter((skill) => skill.requirement === 'essential');
+  const desirables = required.filter((skill) => skill.requirement === 'desirable');
+
+  const matches: SkillMatch[] = required.map((requirement) => {
+    const holding = byId.get(requirement.skillId);
+    const meetsLevel =
+      holding != null &&
+      (requirement.minProficiency == null ||
+        PROFICIENCY_RANK[holding.proficiency] >= PROFICIENCY_RANK[requirement.minProficiency]);
+
+    return {
+      skillId: requirement.skillId,
+      name: requirement.name,
+      requirement: requirement.requirement,
+      held: meetsLevel,
+      proficiency: holding?.proficiency ?? null,
+      belowRequestedLevel: holding != null && !meetsLevel,
+    };
+  });
+
+  // Only the missing ones need naming: reaching past the early return below
+  // means every essential was met.
+  const essentialsMissing = matches.filter((m) => m.requirement === 'essential' && !m.held);
+  const desirablesMet = matches.filter((m) => m.requirement === 'desirable' && m.held);
+
+  const reasons: string[] = [];
+
+  // A position with no stated essentials cannot disqualify anybody on them.
+  if (essentialsMissing.length > 0) {
+    const short = essentialsMissing.map((m) =>
+      m.belowRequestedLevel ? `${m.name} (below the level asked for)` : m.name,
+    );
+    reasons.push(`Missing an essential skill: ${short.join(', ')}.`);
+    return { score: 0, eligible: false, matches, reasons };
+  }
+
+  reasons.push(
+    essentials.length === 0
+      ? 'This position lists no essential skills, so nobody is ruled out on them.'
+      : `Has all ${essentials.length} essential skill${essentials.length === 1 ? '' : 's'}.`,
+  );
+
+  let score = ESSENTIAL_WEIGHT;
+
+  if (desirables.length > 0) {
+    score += (desirablesMet.length / desirables.length) * DESIRABLE_WEIGHT;
+    reasons.push(
+      `Has ${desirablesMet.length} of ${desirables.length} desirable skill${desirables.length === 1 ? '' : 's'}.`,
+    );
+  } else {
+    // Nothing desirable to distinguish people on, so the band is not withheld
+    // from everybody — it would only compress the whole list against the top.
+    score += DESIRABLE_WEIGHT;
+  }
+
+  // Depth across the skills that were actually asked for.
+  const relevant = required
+    .map((requirement) => byId.get(requirement.skillId))
+    .filter((skill): skill is HeldSkill => skill != null);
+
+  if (relevant.length > 0) {
+    const depth =
+      relevant.reduce((total, skill) => total + PROFICIENCY_RANK[skill.proficiency], 0) /
+      (relevant.length * (PROFICIENCIES.length - 1));
+    score += depth * DEPTH_WEIGHT;
+
+    const strongest = [...relevant].sort(
+      (a, b) => PROFICIENCY_RANK[b.proficiency] - PROFICIENCY_RANK[a.proficiency],
+    )[0]!;
+    if (PROFICIENCY_RANK[strongest.proficiency] >= PROFICIENCY_RANK.advanced) {
+      const name =
+        required.find((r) => r.skillId === strongest.skillId)?.name ?? 'a required skill';
+      reasons.push(`${strongest.proficiency} in ${name}.`);
+    }
+  }
+
+  // Recency is judged on the essential skills alone where there are any.
+  //
+  // Measuring it across everything the position asked for lets a current soft
+  // skill vouch for a technical one nobody has touched in years: somebody whose
+  // Python is three years stale but who taught a class last month reads as
+  // "used within six months", which is true of the wrong skill and exactly the
+  // plausible-looking answer that costs a tool its credibility.
+  const essentialIds = new Set(essentials.map((skill) => skill.skillId));
+  const judged =
+    essentialIds.size > 0 ? relevant.filter((skill) => essentialIds.has(skill.skillId)) : relevant;
+
+  const recency = recencyOf(judged, options.today, essentialIds.size > 0);
+  score += recency.fraction * RECENCY_WEIGHT;
+  if (recency.note) reasons.push(recency.note);
+
+  return { score: Math.round(score), eligible: true, matches, reasons };
+}
+
+/** How current the judged skills are, and whether that is worth saying. */
+function recencyOf(
+  judged: readonly HeldSkill[],
+  today: string | undefined,
+  essentialsOnly: boolean,
+): { fraction: number; note: string | null } {
+  const noun = essentialsOnly ? 'the essential skills' : 'these skills';
+  const dated = judged.filter((skill) => skill.lastUsedOn);
+  // Nobody has said when these were last used. Neither credited nor punished:
+  // an unfilled field is missing information, not evidence of staleness.
+  if (dated.length === 0) return { fraction: 0.5, note: null };
+
+  const now = today ? new Date(`${today}T00:00:00Z`) : new Date();
+  const months = dated.map((skill) => monthsSince(skill.lastUsedOn!, now));
+  // The staleness that matters is the worst of them: a position needing Python
+  // and SQL is not served by somebody current on one and years off the other.
+  const stalest = Math.max(...months);
+
+  if (stalest <= 6) return { fraction: 1, note: `Used ${noun} within six months.` };
+  if (stalest >= STALE_AFTER_MONTHS) {
+    const years = Math.floor(stalest / 12);
+    return {
+      fraction: 0,
+      note: `Has not used ${noun} in ${years} year${years === 1 ? '' : 's'}.`,
+    };
+  }
+  return { fraction: 1 - (stalest - 6) / (STALE_AFTER_MONTHS - 6), note: null };
+}
+
+function monthsSince(date: string, now: Date): number {
+  const then = new Date(`${date}T00:00:00Z`);
+  return Math.max(
+    0,
+    (now.getUTCFullYear() - then.getUTCFullYear()) * 12 + (now.getUTCMonth() - then.getUTCMonth()),
+  );
+}
+
+/* ------------------------------------------------------------ availability */
+
+export interface Commitment {
+  /** `YYYY-MM-DD`. */
+  startDate: string;
+  /** `YYYY-MM-DD`, or null for an assignment with no agreed end. */
+  endDate: string | null;
+  allocationPercent: number;
+}
+
+export interface Availability {
+  /** How much of them is already spoken for at the busiest point in the window. */
+  committedPercent: number;
+  /** What is left at that busiest point. Zero means fully booked. */
+  availablePercent: number;
+  /**
+   * The first date they have any capacity, or null when nothing frees up.
+   *
+   * Null is the honest answer for an open-ended commitment: "we do not know
+   * when they are free again" is different from "never", and different again
+   * from a date. A caller that wants a date must chase the assignment's end.
+   */
+  availableFrom: string | null;
+  /** True when they have no commitments in the window at all. */
+  onBench: boolean;
+}
+
+/**
+ * What is left of somebody between two dates.
+ *
+ * Measured at the busiest point in the window rather than averaged across it:
+ * a trainer who is free for three weeks and fully booked for the fourth cannot
+ * take a month-long posting, and an average would say they were 75% free.
+ */
+export function availabilityIn(
+  commitments: readonly Commitment[],
+  window: { from: string; to: string },
+): Availability {
+  const overlapping = commitments.filter(
+    (c) => c.startDate <= window.to && (c.endDate == null || c.endDate >= window.from),
+  );
+
+  if (overlapping.length === 0) {
+    return {
+      committedPercent: 0,
+      availablePercent: 100,
+      availableFrom: window.from,
+      onBench: true,
+    };
+  }
+
+  // The busiest day is always the start of some commitment, so only those
+  // boundaries need checking rather than every date in the window.
+  const boundaries = [
+    window.from,
+    ...overlapping.map((c) => (c.startDate > window.from ? c.startDate : window.from)),
+  ];
+
+  let committedPercent = 0;
+  for (const day of boundaries) {
+    const load = overlapping
+      .filter((c) => c.startDate <= day && (c.endDate == null || c.endDate >= day))
+      .reduce((total, c) => total + c.allocationPercent, 0);
+    committedPercent = Math.max(committedPercent, load);
+  }
+
+  const availablePercent = Math.max(0, 100 - committedPercent);
+
+  return {
+    committedPercent,
+    availablePercent,
+    availableFrom: availablePercent > 0 ? window.from : freesUpOn(overlapping),
+    onBench: false,
+  };
+}
+
+/** The day after the last commitment ends, or null when one never does. */
+function freesUpOn(commitments: readonly Commitment[]): string | null {
+  if (commitments.some((c) => c.endDate == null)) return null;
+
+  const last = commitments
+    .map((c) => c.endDate!)
+    .sort()
+    .at(-1)!;
+  const next = new Date(`${last}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString().slice(0, 10);
 }

@@ -26,6 +26,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 
   // The commercial side. Clients is the directory HR staffs against; Margin is
   // the money, which is a narrower audience.
+  { label: 'Find Trainers', path: '/find-trainers', capability: 'matching.read', section: 'work' },
   { label: 'Clients', path: '/clients', capability: 'clients.read', section: 'work' },
   { label: 'Margin', path: '/margin', capability: 'billing.read', section: 'work' },
 

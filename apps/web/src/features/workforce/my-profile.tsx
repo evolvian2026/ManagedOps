@@ -2,6 +2,7 @@ import { Card, PageHeader } from '../../components/ui';
 import { ErrorState, LoadingState } from '../../components/states';
 import { formatDate, formatInr, humanise } from '../onboarding/format';
 import { DocumentChecklist } from './document-checklist';
+import { TrainerSkillsTab } from '../skills/trainer-skills';
 import { useMyProfile, useTrainerDocuments } from './api';
 
 /**
@@ -78,6 +79,19 @@ export function MyProfilePage() {
               canUpload
             />
           )}
+        </Card>
+      </div>
+
+      {/* A trainer holds `skills.manage` over their own record, and this is the
+          only screen they have. Granting the capability without somewhere to
+          exercise it would be the same mistake the RBAC matrix already calls
+          out for `deboarding.read`: a permission no screen serves. */}
+      <div className="mt-5">
+        <Card
+          title="What you can teach"
+          description="Keep this current — it is what puts you forward for work."
+        >
+          <TrainerSkillsTab trainerId={trainer.id} showIntro={false} />
         </Card>
       </div>
     </>

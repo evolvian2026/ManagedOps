@@ -17,9 +17,12 @@ import {
   LeaveTab,
   ResourcesTab,
 } from './trainer-operations';
+import { TrainerSkillsTab } from '../skills/trainer-skills';
+import { useTrainerSkills } from '../skills/api';
 
 type Tab =
   | 'overview'
+  | 'skills'
   | 'documents'
   | 'assignments'
   | 'attendance'
@@ -41,6 +44,7 @@ export function TrainerProfile({ trainerId, onBack }: { trainerId: string; onBac
   const { can } = useAuth();
   const trainer = useTrainer(trainerId);
   const documents = useTrainerDocuments(can('trainers.read_documents') ? trainerId : null);
+  const skills = useTrainerSkills(can('skills.read') ? trainerId : null);
 
   if (trainer.isPending) return <LoadingState label="Loading the profile" rows={4} />;
   if (trainer.isError) {
@@ -92,6 +96,11 @@ export function TrainerProfile({ trainerId, onBack }: { trainerId: string; onBac
           onChange={setTab}
           tabs={[
             { id: 'overview', label: 'Overview' },
+            // Before Documents: what somebody can teach is the first thing
+            // asked about them, and the tab order should say so.
+            ...(can('skills.read')
+              ? [{ id: 'skills' as const, label: 'Skills', count: skills.data?.length }]
+              : []),
             ...(canSeeDocuments
               ? [
                   {
@@ -119,6 +128,8 @@ export function TrainerProfile({ trainerId, onBack }: { trainerId: string; onBac
 
       {tab === 'overview' ? (
         <Overview trainer={trainer.data} />
+      ) : tab === 'skills' ? (
+        <TrainerSkillsTab trainerId={trainerId} />
       ) : tab === 'documents' ? (
         documents.isPending ? (
           <LoadingState label="Loading documents" rows={3} />

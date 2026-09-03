@@ -115,6 +115,11 @@ export const createAssignmentSchema = z
     endDate: dateStringSchema.optional(),
     /** Per assignment, never carried over (spec assumption A5). */
     leaveAllowanceDays: z.number().min(0).max(30).default(3),
+    /**
+     * How much of the trainer's time this takes. Defaults to all of it, which
+     * is the common case and the one the database enforces against overlap.
+     */
+    allocationPercent: z.number().int().min(1).max(100).default(100),
   })
   .strict()
   .refine((value) => !value.endDate || value.endDate >= value.startDate, {

@@ -118,9 +118,33 @@ async function main(): Promise<void> {
 
   // ---------------------------------------------------------------- trainers
   const trainerSeeds = [
-    { name: 'Karan Mehta', email: 'karan.mehta@managedops.local', lead: true, unbilled: false },
-    { name: 'Sneha Iyer', email: 'sneha.iyer@managedops.local', lead: false, unbilled: false },
-    { name: 'Arjun Desai', email: 'arjun.desai@managedops.local', lead: false, unbilled: false },
+    {
+      name: 'Karan Mehta',
+      email: 'karan.mehta@managedops.local',
+      lead: true,
+      unbilled: false,
+      allocationPercent: 100,
+      freesUpInDays: null,
+    },
+    {
+      name: 'Sneha Iyer',
+      email: 'sneha.iyer@managedops.local',
+      lead: false,
+      unbilled: false,
+      // Comes free in a month: the best match for the summer position, and
+      // available in time for it.
+      allocationPercent: 100,
+      freesUpInDays: 30,
+    },
+    {
+      name: 'Arjun Desai',
+      email: 'arjun.desai@managedops.local',
+      lead: false,
+      unbilled: false,
+      // Three days a week, so there is genuine capacity left over.
+      allocationPercent: 60,
+      freesUpInDays: null,
+    },
     // Not billed to the client: internal curriculum work, which is what gives
     // the margin report an "unbilled" row rather than a uniform one.
     {
@@ -128,6 +152,8 @@ async function main(): Promise<void> {
       email: 'meera.krishnan@managedops.local',
       lead: false,
       unbilled: true,
+      allocationPercent: 100,
+      freesUpInDays: null,
     },
   ];
 
@@ -138,6 +164,8 @@ async function main(): Promise<void> {
     email: string;
     lead: boolean;
     unbilled: boolean;
+    allocationPercent: number;
+    freesUpInDays: number | null;
   }[] = [];
   let employeeSequence = 1;
 
@@ -185,6 +213,8 @@ async function main(): Promise<void> {
       email: seed.email,
       lead: seed.lead,
       unbilled: seed.unbilled,
+      allocationPercent: seed.allocationPercent,
+      freesUpInDays: seed.freesUpInDays,
     });
     employeeSequence += 1;
   }
@@ -301,7 +331,13 @@ async function main(): Promise<void> {
         projectId: project.id,
         role: trainer.lead ? 'lead' : 'trainer',
         startDate: dateOnly(daysFromToday(-45)),
+        // Varied on purpose, so availability is something to read rather than a
+        // column of identical zeroes: one posting ends soon, one takes only
+        // part of somebody's week, and the rest run open-ended.
+        endDate:
+          trainer.freesUpInDays == null ? null : dateOnly(daysFromToday(trainer.freesUpInDays)),
         status: 'active',
+        allocationPercent: trainer.allocationPercent,
         leaveAllowanceDays: new Prisma.Decimal(3),
         // The lead is billed above the contract rate and one trainer is not
         // billed at all, so the margin report has both a premium and an
@@ -314,6 +350,97 @@ async function main(): Promise<void> {
         createdById: users.manager!.id,
       },
     });
+  }
+
+  // ----------------------------------------------------------------- skills
+  //
+  // A catalogue, then profiles that differ in ways the ranking has to notice:
+  // one trainer strong and current, one strong but years out of practice, one
+  // who is missing an essential outright. A seed where everybody matches
+  // equally would make the ranking look like it worked whatever it did.
+  const skillSeeds = [
+    { name: 'React', category: 'Frontend' },
+    { name: 'Node.js', category: 'Backend' },
+    { name: 'Python', category: 'Backend' },
+    { name: 'SQL', category: 'Data' },
+    { name: 'Data Visualisation', category: 'Data' },
+    { name: 'Docker', category: 'Platform' },
+    { name: 'Classroom Delivery', category: 'Teaching' },
+  ];
+
+  const skills: Record<string, string> = {};
+  for (const seed of skillSeeds) {
+    const skill = await prisma.skill.upsert({
+      where: { name: seed.name },
+      update: {},
+      create: {
+        id: uuidv7(),
+        name: seed.name,
+        category: seed.category,
+        createdById: users.superAdmin!.id,
+      },
+    });
+    skills[seed.name] = skill.id;
+  }
+
+  const profileSeeds: Record<
+    string,
+    {
+      skill: string;
+      proficiency: 'beginner' | 'intermediate' | 'advanced' | 'expert';
+      years: number;
+      monthsAgo: number;
+    }[]
+  > = {
+    // Current and deep on the data stack: the obvious first pick.
+    'Sneha Iyer': [
+      { skill: 'Python', proficiency: 'expert', years: 8, monthsAgo: 1 },
+      { skill: 'SQL', proficiency: 'advanced', years: 6, monthsAgo: 1 },
+      { skill: 'Data Visualisation', proficiency: 'advanced', years: 4, monthsAgo: 2 },
+      { skill: 'Classroom Delivery', proficiency: 'expert', years: 9, monthsAgo: 0 },
+    ],
+    // Has everything essential but has not touched it in years — eligible, and
+    // ranked below Sneha for exactly that reason.
+    'Arjun Desai': [
+      { skill: 'Python', proficiency: 'advanced', years: 5, monthsAgo: 40 },
+      { skill: 'SQL', proficiency: 'intermediate', years: 3, monthsAgo: 38 },
+      { skill: 'Classroom Delivery', proficiency: 'advanced', years: 6, monthsAgo: 1 },
+    ],
+    // A front-end trainer: strong, current, and wrong for this position.
+    'Meera Krishnan': [
+      { skill: 'React', proficiency: 'expert', years: 7, monthsAgo: 1 },
+      { skill: 'Node.js', proficiency: 'advanced', years: 5, monthsAgo: 2 },
+      { skill: 'Docker', proficiency: 'intermediate', years: 2, monthsAgo: 6 },
+      { skill: 'Classroom Delivery', proficiency: 'advanced', years: 4, monthsAgo: 0 },
+    ],
+    'Karan Mehta': [
+      { skill: 'React', proficiency: 'advanced', years: 6, monthsAgo: 2 },
+      { skill: 'SQL', proficiency: 'advanced', years: 7, monthsAgo: 3 },
+      { skill: 'Classroom Delivery', proficiency: 'expert', years: 11, monthsAgo: 0 },
+    ],
+  };
+
+  for (const trainer of trainers) {
+    for (const entry of profileSeeds[trainer.name] ?? []) {
+      const lastUsed = new Date(TODAY);
+      lastUsed.setUTCMonth(lastUsed.getUTCMonth() - entry.monthsAgo);
+
+      await prisma.trainerSkill.upsert({
+        where: {
+          trainerId_skillId: { trainerId: trainer.trainerId, skillId: skills[entry.skill]! },
+        },
+        update: {},
+        create: {
+          id: uuidv7(),
+          trainerId: trainer.trainerId,
+          skillId: skills[entry.skill]!,
+          proficiency: entry.proficiency,
+          years: new Prisma.Decimal(entry.years),
+          lastUsedOn: dateOnly(lastUsed),
+          createdById: users.hr!.id,
+        },
+      });
+    }
   }
 
   // ---------------------------------------------------------------- recruitment
@@ -333,6 +460,30 @@ async function main(): Promise<void> {
         createdById: users.hr!.id,
       },
     }));
+
+  // What that position actually needs, which is what the matching ranks against.
+  const positionNeeds = [
+    { skill: 'Python', requirement: 'essential' as const, min: 'intermediate' as const },
+    { skill: 'SQL', requirement: 'essential' as const, min: null },
+    { skill: 'Data Visualisation', requirement: 'desirable' as const, min: null },
+    { skill: 'Classroom Delivery', requirement: 'desirable' as const, min: null },
+  ];
+  for (const need of positionNeeds) {
+    await prisma.positionSkill.upsert({
+      where: {
+        positionId_skillId: { positionId: seededPosition.id, skillId: skills[need.skill]! },
+      },
+      update: {},
+      create: {
+        id: uuidv7(),
+        positionId: seededPosition.id,
+        skillId: skills[need.skill]!,
+        requirement: need.requirement,
+        minProficiency: need.min,
+        createdById: users.hr!.id,
+      },
+    });
+  }
 
   const candidateSeeds = [
     {

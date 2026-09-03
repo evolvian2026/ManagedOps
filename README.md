@@ -73,7 +73,7 @@ apps/
   web/         React + Vite single-page client
 packages/
   shared/      Zod schemas, enums, state machines, the permission matrix,
-               and the margin rules
+               and the margin and matching rules
   tsconfig/    Shared TypeScript configuration
 infra/
   compose/     Development and production Docker Compose
@@ -163,6 +163,74 @@ Who sees any of this is a capability, not a role: `billing.read` for the numbers
 `billing.manage` to set a rate, `clients.read` for the directory HR staffs
 against. A rate is omitted from the payload entirely for anyone without
 `billing.read` — not nulled, and not hidden in the client.
+
+---
+
+## How matching works
+
+Two questions, answered separately and reported side by side: **can they do the
+work**, and **are they free to**. They are deliberately not folded into one
+ranking — the best-matched person is usually the busiest, and whether to pull
+them off something else is a judgement with context the server does not have.
+
+### Fit
+
+Skills are a **canonical catalogue**, not free text on a profile. "React",
+"ReactJS" and "react.js" typed into three profiles are three skills that never
+match each other, which is the failure that makes a matching feature useless.
+
+Scoring (`scoreMatch` in `packages/shared/src/rules.ts`) is out of 100:
+
+| Component  | Weight | Rule                                           |
+| ---------- | -----: | ---------------------------------------------- |
+| Essentials |     60 | All or nothing — a missing one scores **0**    |
+| Desirables |     25 | Pro rata across those the position lists       |
+| Depth      |     10 | Mean proficiency across the skills asked about |
+| Recency    |      5 | How current the **essential** skills are       |
+
+Two rules do most of the work:
+
+**A missing essential is disqualifying, not merely costly.** Ranking somebody
+top because they are strong on four desirable skills while lacking the one
+thing the position exists for is exactly the plausible-looking answer that
+makes people stop trusting the tool.
+
+**Recency is judged on the essentials, at their stalest.** Measuring it across
+everything asked for lets a current soft skill vouch for a technical one nobody
+has touched in years — "used within six months" would be true of the wrong
+skill. And a position needing two skills is not served by somebody current on
+one and years off the other.
+
+Every component also states itself in a sentence. A ranked list with a bare
+"87" against each name tells a staffer nothing they can act on or argue with,
+so the API returns `reasons` and the screen shows them.
+
+### Availability
+
+Each assignment carries an `allocationPercent` — 100 by default, the common
+case of one client, full time. `availabilityIn` measures free capacity at the
+**busiest point** in the window rather than averaging across it: somebody free
+for three weeks and booked for the fourth cannot take a month-long posting, and
+an average would call them 75% free.
+
+An open-ended commitment reports `availableFrom: null` — "we do not know when
+they are free again", which is not "never" and not a date either. Inventing one
+would put somebody on a shortlist they cannot be on.
+
+### Nobody is in two places at once
+
+Two constraints in `20260903120000_skills_and_capacity`:
+
+- A **partial unique index** on `(trainerId, projectId) where status = 'active'` —
+  which the service had been claiming in a comment while enforcing nothing, so
+  two concurrent requests could both create the same live assignment.
+- An **exclusion constraint** (`btree_gist`) refusing two overlapping full-time
+  assignments for one trainer. Only full-time: no exclusion constraint can
+  express "partial allocations summing to 100", and pretending otherwise in SQL
+  would be worse than checking it where it can actually be checked.
+
+The service checks the same rule first, so the caller gets a sentence naming the
+project standing in the way rather than a constraint violation.
 
 ---
 
