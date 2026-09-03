@@ -451,10 +451,19 @@ colleague's Aadhaar with an id the API had just handed them. Also: the Audit Log
 and Users screens, Terraform for the whole estate, four runbooks, and the
 browser suite in CI.
 
+**Beyond the specification** — five capabilities the reference documents assumed
+but never described, each built on request and each explained in its own section
+above: the commercial side (clients, agreed day rates, and margin derived rather
+than stored), skills and availability matching, the payroll input register, the
+quality feedback loop, and document expiry. Then an information-architecture
+pass, once the sidebar and the trainer profile had both outgrown a flat list:
+six named sidebar sections and four groups of profile tabs, with empty groups
+dropped rather than shown as bare headings.
+
 Every screen in the specification is implemented; there are no placeholders.
 
 | Suite                             | Count |
 | --------------------------------- | ----- |
-| Shared contracts                  | 133   |
-| API integration (real PostgreSQL) | 505   |
-| Browser (desktop + mobile)        | 97    |
+| Shared contracts                  | 224   |
+| API integration (real PostgreSQL) | 710   |
+| Browser (desktop + mobile)        | 155   |

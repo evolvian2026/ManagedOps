@@ -1220,11 +1220,20 @@ _Phase 5 — hardening and deployment:_ the executable permission matrix across
 every route, the file-access security pass, the Audit Log and Users screens,
 Terraform for the whole estate, four runbooks, and the browser suite in CI.
 
+_Beyond the five phases:_ the commercial side (§1.3 put payroll processing and
+invoicing out of scope, but not knowing what a project earns) — clients, agreed
+day rates and derived margin; skills and availability matching behind Find
+Trainers; the payroll input register, which hands off to whatever runs payroll
+rather than running it; the quality feedback loop, whose summary feeds the
+re-hire decision; and document expiry, which makes the checklist ongoing
+compliance rather than a one-time gate. Then an information-architecture pass
+over the sidebar and the trainer profile.
+
 | Check                                   | Result      |
 | --------------------------------------- | ----------- |
-| Shared contract tests                   | 133 passing |
-| API integration tests (real PostgreSQL) | 505 passing |
-| Browser tests (desktop + mobile)        | 97 passing  |
+| Shared contract tests                   | 224 passing |
+| API integration tests (real PostgreSQL) | 710 passing |
+| Browser tests (desktop + mobile)        | 155 passing |
 | Typecheck, formatting, both builds      | Clean       |
 
 Every screen in §9.4 and §9.5 is implemented. There are no placeholders left.
