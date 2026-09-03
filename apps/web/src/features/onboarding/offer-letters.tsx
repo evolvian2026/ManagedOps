@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { OfferStatus } from '@managedops/shared';
 import { ApiError, errorMessage } from '../../lib/api';
-import { Badge, Button, Field, Modal, Table, Td, TextArea, Th, Tabs } from '../../components/ui';
+import { Badge, Button, Modal, Table, Td, TextArea, Th, Tabs } from '../../components/ui';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states';
 import { useOffers, useRespondToOffer, useSendOffer, type OfferRow } from './api';
 import { STATUS_TONE, formatDate, formatInr, humanise } from './format';

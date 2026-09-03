@@ -30,6 +30,28 @@ pnpm dev                       # api on :4000, web on :5173
 Open http://localhost:5173. The seed prints every account it created; they all
 share the password in `SEED_PASSWORD`.
 
+### Running the browser suite
+
+```bash
+pnpm db:seed:fresh             # not db:seed — see below
+pnpm dev                       # in another shell
+pnpm test:e2e
+```
+
+`db:seed` is idempotent but it is not a reset: it restores the rows it owns and
+cannot undo rows written on top of them. The browser suite punches trainers in,
+screens applicants and reschedules interviews, so a second run against the same
+database finds that work already done and fails. `db:seed:fresh` truncates
+first, which is what makes the suite repeatable.
+
+If Playwright reports a missing browser, the pinned version and the one on the
+machine disagree. Point it at the installed binary rather than downloading a
+second copy:
+
+```bash
+export PLAYWRIGHT_CHROMIUM_PATH=/path/to/chrome
+```
+
 | What                   | Where                          |
 | ---------------------- | ------------------------------ |
 | Web client             | http://localhost:5173          |
@@ -66,15 +88,18 @@ client and the server cannot disagree about them.
 
 ## Commands
 
-| Command                                    | Does                                       |
-| ------------------------------------------ | ------------------------------------------ |
-| `pnpm dev`                                 | Runs the API and the web client together   |
-| `pnpm build`                               | Builds everything                          |
-| `pnpm typecheck`                           | Typechecks every package                   |
-| `pnpm test`                                | Runs every test suite                      |
-| `pnpm db:seed`                             | Loads demo data (idempotent)               |
-| `pnpm infra:up` / `infra:down`             | Starts or stops the local backing services |
-| `pnpm --filter @managedops/api dev:worker` | Runs the scheduled-job worker              |
+| Command                                    | Does                                        |
+| ------------------------------------------ | ------------------------------------------- |
+| `pnpm dev`                                 | Runs the API and the web client together    |
+| `pnpm build`                               | Builds everything                           |
+| `pnpm typecheck`                           | Typechecks every package                    |
+| `pnpm test`                                | Runs every test suite                       |
+| `pnpm lint`                                | Lints every package                         |
+| `pnpm test:e2e`                            | Runs the browser suite against a live stack |
+| `pnpm db:seed`                             | Loads demo data (idempotent)                |
+| `pnpm db:seed:fresh`                       | Truncates first, then loads demo data       |
+| `pnpm infra:up` / `infra:down`             | Starts or stops the local backing services  |
+| `pnpm --filter @managedops/api dev:worker` | Runs the scheduled-job worker               |
 
 ---
 

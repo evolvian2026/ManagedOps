@@ -114,6 +114,8 @@ export function humanSize(bytes: number): string {
 export function sanitiseFileName(name: string): string {
   const cleaned = name
     .replace(/[/\\]/g, '_')
+    // Stripping control characters is precisely what this guard is for.
+    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f"']/g, '')
     .trim()
     .slice(0, 200);

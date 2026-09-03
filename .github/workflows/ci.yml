@@ -62,10 +62,13 @@ jobs:
         run: pnpm --filter @managedops/api exec prisma generate
 
       - name: Check formatting
-        run: pnpm exec prettier --check "**/*.{ts,tsx,json,md,yml,yaml}"
+        run: pnpm exec prettier --check "**/*.{ts,tsx,js,mjs,json,md,yml,yaml}"
 
       - name: Typecheck
         run: pnpm -r typecheck
+
+      - name: Lint
+        run: pnpm lint
 
       - name: Apply migrations
         run: pnpm --filter @managedops/api exec prisma migrate deploy
@@ -140,7 +143,9 @@ jobs:
       - name: Prepare the database
         run: |
           pnpm --filter @managedops/api exec prisma migrate deploy
-          pnpm --filter @managedops/api exec tsx prisma/seed.ts
+          # --fresh: the browser suite mutates seeded records, so it needs a
+          # database that has not already run it.
+          pnpm db:seed:fresh
 
       - name: Start the stack
         run: |

@@ -51,7 +51,9 @@ export function toCsv<T>(rows: readonly T[], columns: readonly CsvColumn<T>[]): 
 export function sendCsv(response: Response, filename: string, body: string): void {
   response.setHeader('Content-Type', 'text/csv; charset=utf-8');
   response.setHeader('Content-Disposition', `attachment; filename="${safeFilename(filename)}"`);
-  response.send(`﻿${body}`);
+  // U+FEFF written as an escape: a literal BOM byte here is invisible in a
+  // diff and a stray editor or tooling pass can silently drop it.
+  response.send(`\uFEFF${body}`);
 }
 
 /** Keeps a caller-supplied name from breaking out of the header. */

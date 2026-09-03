@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ROLES, emailSchema, paginationSchema, phoneSchema, type Role } from '@managedops/shared';
+import { ROLES, emailSchema, paginationSchema, phoneSchema } from '@managedops/shared';
 import { z } from 'zod';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { newId } from '../../common/ids.js';

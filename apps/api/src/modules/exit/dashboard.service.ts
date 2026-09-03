@@ -8,8 +8,6 @@ import {
 } from '@managedops/shared';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import {
-  applicationScope,
-  assignmentScope,
   correctionScope,
   deboardingScope,
   flagScope,

@@ -45,18 +45,41 @@ function seededWorkingDays(count: number): Date[] {
   return days;
 }
 
-/** Opens the attendance tab on the month holding the seeded correction. */
-async function openSeededAttendanceMonth(page: Page): Promise<void> {
+/** The most recent weekly off, which is the only day rendered as one. */
+function lastSunday(): Date {
+  for (let offset = 1; offset <= 7; offset += 1) {
+    const day = new Date(Date.now() - offset * 86_400_000);
+    if (day.getUTCDay() === 0) return day;
+  }
+  throw new Error('No Sunday in the past week');
+}
+
+/**
+ * Opens the attendance tab on the month holding a given day.
+ *
+ * The calendar opens on today's month and renders up to today, so nothing is a
+ * safe bet about which month a seeded day is in: on the 3rd, this month holds
+ * three rows and the most recent Sunday is in the previous one. Stepping back
+ * by the actual month difference is the only version of this that does not
+ * quietly depend on today's date.
+ */
+async function openAttendanceMonth(page: Page, day: Date): Promise<void> {
   await openMyWork(page, 'Attendance');
   await expect(page.getByRole('table')).toBeVisible();
 
-  // The day left open is the second most recent working day (see the seed).
-  const target = seededWorkingDays(2)[1]!.toISOString().slice(0, 7);
-  const thisMonth = new Date().toISOString().slice(0, 7);
-  if (target !== thisMonth) {
-    await page.getByRole('button', { name: '← Previous' }).click();
+  const now = new Date();
+  const monthsBack =
+    (now.getUTCFullYear() - day.getUTCFullYear()) * 12 + (now.getUTCMonth() - day.getUTCMonth());
+
+  for (let step = 0; step < monthsBack; step += 1) {
+    await page.getByRole('button', { name: '\u2190 Previous' }).click();
     await expect(page.getByRole('table')).toBeVisible();
   }
+}
+
+/** Opens the month holding the seeded correction — the 2nd working day back. */
+async function openSeededAttendanceMonth(page: Page): Promise<void> {
+  await openAttendanceMonth(page, seededWorkingDays(2)[1]!);
 }
 
 test.describe('the punch card', () => {
@@ -108,7 +131,9 @@ test.describe('the punch card', () => {
 test.describe('a trainer looking at their attendance', () => {
   test('accounts for every past day, weekly offs included', async ({ page }) => {
     await signIn(page, SNEHA);
-    await openSeededAttendanceMonth(page);
+    // The weekly off, not the correction, decides the month here: early in a
+    // month the last Sunday is still in the previous one.
+    await openAttendanceMonth(page, lastSunday());
 
     // Sundays are derived from the project calendar, never stored per trainer.
     await expect(page.getByText('Weekly off').first()).toBeVisible();

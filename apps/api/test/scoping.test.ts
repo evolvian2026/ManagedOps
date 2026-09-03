@@ -276,6 +276,19 @@ describe('a project lead sees only their own project', () => {
     await harness.http().get(`/api/v1/projects/${fixture.projectBId}`).set(auth(leadA)).expect(404);
   });
 
+  it('scopes the other lead to their own project, the other way round', async () => {
+    // Asserting only lead A would pass just as happily against a scope that
+    // always returned project A. The symmetric case is what makes the pair
+    // mean anything.
+    const response = await harness.http().get('/api/v1/projects').set(auth(leadB)).expect(200);
+
+    const ids = response.body.data.map((row: { id: string }) => row.id);
+    expect(ids).toEqual([fixture.projectBId]);
+
+    await harness.http().get(`/api/v1/projects/${fixture.projectBId}`).set(auth(leadB)).expect(200);
+    await harness.http().get(`/api/v1/projects/${fixture.projectAId}`).set(auth(leadB)).expect(404);
+  });
+
   it('sees only the positions on their project', async () => {
     const response = await harness.http().get('/api/v1/positions').set(auth(leadA)).expect(200);
 

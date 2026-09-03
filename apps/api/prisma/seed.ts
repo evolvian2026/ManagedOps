@@ -4,6 +4,12 @@
  * It is idempotent: re-running updates the same records rather than piling up
  * duplicates, so `pnpm db:seed` is safe to repeat against a live dev database.
  *
+ * Idempotent is not the same as a reset, though. Re-seeding restores the rows
+ * this file owns; it cannot undo rows something else wrote on top of them — a
+ * punch recorded today, an interview rescheduled. The browser suite does
+ * exactly that, so it needs a database that has not already run it: pass
+ * `--fresh` (`pnpm db:seed:fresh`) to truncate first and get one.
+ *
  * Everything here is demo data. The only credential is SEED_PASSWORD from the
  * environment, which exists solely so a developer can sign in; nothing in this
  * file is used by, or reachable from, production.
@@ -27,9 +33,31 @@ function dateOnly(date: Date): Date {
   return new Date(date.toISOString().slice(0, 10));
 }
 
+/**
+ * Empties every table so a seed lands on a known-empty database.
+ *
+ * Discovered from the catalogue rather than listed by hand: a table added in a
+ * later migration and forgotten here would otherwise survive the reset and
+ * quietly reintroduce the state this is meant to clear.
+ */
+async function truncateAll(): Promise<void> {
+  const tables = await prisma.$queryRaw<{ tablename: string }[]>`
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'
+  `;
+  if (tables.length === 0) return;
+  const list = tables.map((table) => `"public"."${table.tablename}"`).join(', ');
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
+}
+
 async function main(): Promise<void> {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Refusing to seed a production database');
+  }
+
+  if (process.argv.includes('--fresh')) {
+    await truncateAll();
+    console.log('Truncated every table first (--fresh).');
   }
 
   console.log('Seeding ManagedOps demo data...');

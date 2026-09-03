@@ -37,6 +37,25 @@ function dayOffset(days: number): string {
   return toIstDateString(new Date(Date.now() + days * 86_400_000));
 }
 
+/**
+ * The nth working day from tomorrow, skipping Sundays.
+ *
+ * A plain `dayOffset(n)` is a time bomb for anything the leave rules touch: a
+ * single-day request that lands on a weekly off has no working days in it, so
+ * the service rightly refuses it with 409 — but only on the weekdays where the
+ * arithmetic happens to reach a Sunday.
+ */
+function nextWorkingDay(offset = 1): string {
+  let found = 0;
+  for (let days = 1; days < 40; days += 1) {
+    const candidate = new Date(Date.now() + days * 86_400_000);
+    if (candidate.getUTCDay() === 0) continue;
+    found += 1;
+    if (found === offset) return toIstDateString(candidate);
+  }
+  throw new Error('No working day found');
+}
+
 async function buildProject() {
   const managerUser = await harness.prisma.db.user.findFirst({ where: { role: 'manager' } });
   const hrUser = await harness.prisma.db.user.findFirst({ where: { role: 'hr' } });
@@ -687,13 +706,14 @@ describe('the dashboard', () => {
   });
 
   it('names what is waiting rather than only counting it', async () => {
+    const leaveDay = nextWorkingDay(3);
     await harness
       .http()
       .post('/api/v1/leave-requests')
       .set(auth(trainer))
       .send({
-        startDate: dayOffset(3),
-        endDate: dayOffset(3),
+        startDate: leaveDay,
+        endDate: leaveDay,
         reason: 'A day for the dashboard to notice.',
       })
       .expect(201);

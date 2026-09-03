@@ -12,20 +12,24 @@
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
     "build": "pnpm --filter @managedops/shared build && pnpm --filter @managedops/api build && pnpm --filter @managedops/web build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint",
+    "lint": "eslint .",
     "test": "pnpm -r test",
     "test:unit": "pnpm --filter @managedops/api test:unit && pnpm --filter @managedops/shared test",
     "db:migrate": "pnpm --filter @managedops/api db:migrate",
     "db:seed": "pnpm --filter @managedops/api db:seed",
+    "db:seed:fresh": "pnpm --filter @managedops/api db:seed:fresh",
     "infra:up": "docker compose -f infra/compose/docker-compose.dev.yml up -d",
     "infra:down": "docker compose -f infra/compose/docker-compose.dev.yml down",
-    "format": "prettier --write \"**/*.{ts,tsx,json,md,yml,yaml}\"",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\"",
     "test:e2e": "playwright test --config e2e/playwright.config.ts"
   },
   "devDependencies": {
+    "@eslint/js": "9.18.0",
+    "@playwright/test": "1.49.1",
+    "eslint": "9.18.0",
     "prettier": "3.4.2",
     "typescript": "5.7.3",
-    "@playwright/test": "1.49.1"
+    "typescript-eslint": "8.21.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

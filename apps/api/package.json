@@ -9,7 +9,6 @@
     "start:worker": "node dist/worker.js",
     "dev:worker": "nest start --watch --entryFile worker",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src test --max-warnings 0",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
@@ -17,7 +16,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:reset": "prisma migrate reset --force",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed:fresh": "tsx prisma/seed.ts --fresh"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -45,7 +45,10 @@ export class PoolService {
     private readonly applications: ApplicationsService,
   ) {}
 
-  async list(query: PoolQuery, user: AuthenticatedUser) {
+  // The caller is accepted or refused wholesale by `pool.read`: every role
+  // holding it reads across projects, so there is no per-caller scope to
+  // apply here. The parameter stays to keep the service signatures uniform.
+  async list(query: PoolQuery, _user: AuthenticatedUser) {
     const wantsCandidates = query.source !== 'past_trainer';
     const wantsTrainers = query.source !== 'candidate';
 

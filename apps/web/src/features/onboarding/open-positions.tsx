@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ScreeningOutcome } from '@managedops/shared';
 import { ApiError, errorMessage } from '../../lib/api';
-import { Badge, Button, Card, Modal, Table, Td, TextArea, Th } from '../../components/ui';
+import { Badge, Button, Modal, Table, Td, TextArea, Th } from '../../components/ui';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states';
 import {
   openResume,
