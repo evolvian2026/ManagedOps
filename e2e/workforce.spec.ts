@@ -21,6 +21,11 @@ async function signIn(page: Page, email: string): Promise<void> {
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
 }
 
+async function openProfile(page: Page, name: RegExp): Promise<void> {
+  await page.getByRole('row', { name }).getByRole('button', { name: 'Open' }).click();
+  await expect(page.getByRole('tablist', { name: 'Trainer sections' })).toBeVisible();
+}
+
 async function openBootcampRoster(page: Page): Promise<void> {
   await page.goto('/projects');
   await expect(page.getByRole('heading', { name: 'Running Projects' })).toBeVisible();
@@ -75,10 +80,7 @@ test.describe('the trainer profile', () => {
     await signIn(page, HR);
     await openBootcampRoster(page);
 
-    await page
-      .getByRole('row', { name: /Karan Mehta/ })
-      .getByRole('button', { name: 'Open' })
-      .click();
+    await openProfile(page, /Karan Mehta/);
     await expect(page.getByRole('heading', { name: 'Karan Mehta' })).toBeVisible();
     // The code appears in the header and again in the details list, correctly.
     await expect(page.getByText('MO-2026-0001').first()).toBeVisible();
@@ -87,10 +89,7 @@ test.describe('the trainer profile', () => {
   test('HR sees salary; the read is what the audit trail records', async ({ page }) => {
     await signIn(page, HR);
     await openBootcampRoster(page);
-    await page
-      .getByRole('row', { name: /Karan Mehta/ })
-      .getByRole('button', { name: 'Open' })
-      .click();
+    await openProfile(page, /Karan Mehta/);
 
     // Indian digit grouping, and only because HR holds trainers.read_salary.
     await expect(page.getByText('₹9,60,000')).toBeVisible();
@@ -101,10 +100,7 @@ test.describe('the trainer profile', () => {
   }) => {
     await signIn(page, HR);
     await openBootcampRoster(page);
-    await page
-      .getByRole('row', { name: /Meera Krishnan/ })
-      .getByRole('button', { name: 'Open' })
-      .click();
+    await openProfile(page, /Meera Krishnan/);
     await page.getByRole('tab', { name: /Documents/ }).click();
 
     await expect(page.getByText('Verified', { exact: true }).first()).toBeVisible();
@@ -119,10 +115,7 @@ test.describe('the trainer profile', () => {
   }) => {
     await signIn(page, HR);
     await openBootcampRoster(page);
-    await page
-      .getByRole('row', { name: /Meera Krishnan/ })
-      .getByRole('button', { name: 'Open' })
-      .click();
+    await openProfile(page, /Meera Krishnan/);
     await page.getByRole('tab', { name: /Documents/ }).click();
 
     await expect(page.getByText(/1 of 3 documents verified/)).toBeVisible();
@@ -133,10 +126,7 @@ test.describe('the trainer profile', () => {
   test('rejecting a document insists on a reason', async ({ page }) => {
     await signIn(page, HR);
     await openBootcampRoster(page);
-    await page
-      .getByRole('row', { name: /Meera Krishnan/ })
-      .getByRole('button', { name: 'Open' })
-      .click();
+    await openProfile(page, /Meera Krishnan/);
     await page.getByRole('tab', { name: /Documents/ }).click();
 
     await page.getByRole('button', { name: 'Reject' }).first().click();
@@ -148,11 +138,8 @@ test.describe('the trainer profile', () => {
   test('assignments list the project and the leave allowance', async ({ page }) => {
     await signIn(page, HR);
     await openBootcampRoster(page);
-    await page
-      .getByRole('row', { name: /Karan Mehta/ })
-      .getByRole('button', { name: 'Open' })
-      .click();
-    await page.getByRole('tab', { name: /Assignments/ }).click();
+    await openProfile(page, /Karan Mehta/);
+    await page.getByRole('tab', { name: 'Delivery' }).click();
 
     await expect(page.getByText('Full Stack Bootcamp — Spring Term')).toBeVisible();
     await expect(page.getByText(/3 days leave/)).toBeVisible();
@@ -166,10 +153,7 @@ test.describe('a project lead', () => {
 
     await expect(page.getByRole('table')).toContainText('Sneha Iyer');
 
-    await page
-      .getByRole('row', { name: /Sneha Iyer/ })
-      .getByRole('button', { name: 'Open' })
-      .click();
+    await openProfile(page, /Sneha Iyer/);
     await expect(page.getByRole('heading', { name: 'Sneha Iyer' })).toBeVisible();
     // trainers.read_salary is 'own' scope for a lead, so a colleague's pay is absent.
     await expect(page.getByText(/₹7,20,000/)).toBeHidden();
@@ -178,13 +162,54 @@ test.describe('a project lead', () => {
   test('has no Documents tab, because identity documents are HR business', async ({ page }) => {
     await signIn(page, LEAD);
     await openBootcampRoster(page);
-    await page
-      .getByRole('row', { name: /Sneha Iyer/ })
-      .getByRole('button', { name: 'Open' })
-      .click();
+    await openProfile(page, /Sneha Iyer/);
 
     await expect(page.getByRole('tab', { name: /Documents/ })).toBeHidden();
     await expect(page.getByRole('tab', { name: /Overview/ })).toBeVisible();
+  });
+});
+
+test.describe('the profile in two levels', () => {
+  test('groups the tabs, and picking a group lands on its first tab', async ({ page }) => {
+    await signIn(page, HR);
+    await openBootcampRoster(page);
+    await openProfile(page, /Sneha Iyer/);
+
+    const sections = page.getByRole('tablist', { name: 'Trainer sections' });
+    await expect(sections.getByRole('tab')).toHaveText([
+      'Profile',
+      'Delivery',
+      'Requests',
+      'Performance',
+    ]);
+
+    // Deliverables belongs to Delivery, so it is not on screen until you go
+    // there — that is the whole point of the second level.
+    await expect(page.getByRole('tab', { name: 'Deliverables' })).toBeHidden();
+    await sections.getByRole('tab', { name: 'Delivery' }).click();
+    await expect(page.getByRole('tab', { name: 'Deliverables' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Assignments/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  test('drops the second row when a group holds one thing', async ({ page }) => {
+    await signIn(page, LEAD);
+    await openBootcampRoster(page);
+    await openProfile(page, /Sneha Iyer/);
+
+    const sections = page.getByRole('tablist', { name: 'Trainer sections' });
+    await sections.getByRole('tab', { name: 'Requests' }).click();
+
+    // A lead decides leave but never an expense claim, so Requests holds one
+    // thing — and a row of one tab is furniture, not a choice.
+    await expect(page.getByRole('tab', { name: 'Claims' })).toBeHidden();
+    await expect(page.getByRole('tablist', { name: 'Requests sections' })).toBeHidden();
+    await expect(page.getByRole('tablist', { name: 'Profile sections' })).toBeHidden();
+    // The group still opened onto its one tab's content, not a blank panel.
+    await expect(page.getByText(/No leave requested|Leave requests/)).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Details' })).toBeHidden();
   });
 });
 

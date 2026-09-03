@@ -202,21 +202,46 @@ export function Td({ children, className = '' }: { children: ReactNode; classNam
   return <td className={`px-4 py-3 align-middle text-ink ${className}`}>{children}</td>;
 }
 
+/**
+ * A row of tabs.
+ *
+ * `secondary` is for the second level of a two-level set: pills rather than an
+ * underline, so the eye can tell which row is the section and which is the page
+ * within it. One component with two looks beats two components that drift.
+ */
 export function Tabs<T extends string>({
   tabs,
   active,
   onChange,
   label,
+  variant = 'primary',
 }: {
   tabs: { id: T; label: string; count?: number }[];
   active: T;
   onChange: (id: T) => void;
   label: string;
+  variant?: 'primary' | 'secondary';
 }) {
+  const secondary = variant === 'secondary';
+
   return (
-    <div role="tablist" aria-label={label} className="flex gap-1 border-b border-line">
+    <div
+      role="tablist"
+      aria-label={label}
+      className={
+        secondary ? 'flex flex-wrap gap-1.5 py-2' : 'flex flex-wrap gap-1 border-b border-line'
+      }
+    >
       {tabs.map((tab) => {
         const selected = tab.id === active;
+        const chrome = secondary
+          ? selected
+            ? 'rounded-full bg-primary-wash px-3 py-1 text-primary'
+            : 'rounded-full px-3 py-1 text-ink-soft hover:bg-surface-sunk hover:text-ink'
+          : selected
+            ? '-mb-px border-b-2 border-primary px-3.5 py-2 text-primary'
+            : '-mb-px border-b-2 border-transparent px-3.5 py-2 text-ink-soft hover:text-ink';
+
         return (
           <button
             key={tab.id}
@@ -224,17 +249,13 @@ export function Tabs<T extends string>({
             type="button"
             aria-selected={selected}
             onClick={() => onChange(tab.id)}
-            className={`-mb-px border-b-2 px-3.5 py-2 text-sm font-medium transition-colors ${
-              selected
-                ? 'border-primary text-primary'
-                : 'border-transparent text-ink-soft hover:text-ink'
-            }`}
+            className={`text-sm font-medium transition-colors ${chrome}`}
           >
             {tab.label}
             {tab.count !== undefined ? (
               <span
                 className={`ml-2 rounded-full px-1.5 py-0.5 text-xs tabular-nums ${
-                  selected ? 'bg-primary-wash text-primary' : 'bg-surface-sunk text-ink-soft'
+                  selected ? 'bg-primary/15 text-primary' : 'bg-surface-sunk text-ink-soft'
                 }`}
               >
                 {tab.count}

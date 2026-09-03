@@ -395,10 +395,11 @@ test.describe('the trainer profile, operationally', () => {
       .getByRole('button', { name: 'Open' })
       .click();
 
+    await page.getByRole('tab', { name: 'Delivery' }).click();
     await expect(page.getByRole('tab', { name: 'Attendance' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Daily Log' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Claims' })).toBeVisible();
 
+    await page.getByRole('tab', { name: 'Requests' }).click();
     await page.getByRole('tab', { name: 'Claims' }).click();
     await expect(page.getByRole('table')).toContainText('₹12,500');
   });
@@ -412,8 +413,12 @@ test.describe('the trainer profile, operationally', () => {
       .getByRole('button', { name: 'Open' })
       .click();
 
+    await page.getByRole('tab', { name: 'Delivery' }).click();
     await expect(page.getByRole('tab', { name: 'Attendance' })).toBeVisible();
-    // reimbursements.approve is not a lead's, so the tab is simply absent.
+
+    // reimbursements.approve is not a lead's, so the tab is simply absent —
+    // Requests holds their leave queue and nothing else.
+    await page.getByRole('tab', { name: 'Requests' }).click();
     await expect(page.getByRole('tab', { name: 'Claims' })).toBeHidden();
   });
 });

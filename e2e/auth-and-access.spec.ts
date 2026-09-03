@@ -29,6 +29,12 @@ async function navLabels(page: Page): Promise<string[]> {
   return page.locator('nav[aria-label="Main"] a').allInnerTexts();
 }
 
+/** Lower-cased, because the headings are uppercased by CSS rather than in the markup. */
+async function navSections(page: Page): Promise<string[]> {
+  const headings = await page.locator('nav[aria-label="Main"] p').allInnerTexts();
+  return headings.map((heading) => heading.toLowerCase());
+}
+
 test.describe('signing in', () => {
   test('an admin lands on their dashboard', async ({ page }) => {
     await signIn(page, ACCOUNTS.superAdmin);
@@ -103,6 +109,25 @@ test.describe('what each role can see', () => {
 
     // Hiding the link is not the control; the screen itself refuses.
     await expect(page.locator('h1')).toContainText('Not available to your role');
+  });
+
+  test('groups the sidebar, and shows no heading with nothing under it', async ({ page }) => {
+    await signIn(page, ACCOUNTS.hr);
+    expect(await navSections(page)).toEqual(['delivery', 'people', 'commercial', 'administration']);
+
+    // HR staffs against the client directory but never sees a rate, so
+    // Commercial is present without Margin under it.
+    const nav = await navLabels(page);
+    expect(nav).toContain('Clients');
+    expect(nav).not.toContain('Margin');
+  });
+
+  test('gives a trainer only the sections they have something in', async ({ page }) => {
+    await signIn(page, ACCOUNTS.trainer);
+
+    // Dashboard sits above the first heading, ungrouped — it is not a section.
+    expect(await navSections(page)).toEqual(['people', 'your work']);
+    expect(await navLabels(page)).toContain('Dashboard');
   });
 
   test('a project lead gets oversight and self-service together', async ({ page }) => {

@@ -3,7 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../features/auth/auth-context';
 import { ErrorBoundary } from '../components/states';
 import { Button } from '../components/ui';
-import { visibleNavItems } from './navigation';
+import { visibleNavSections } from './navigation';
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: 'Super Admin',
@@ -19,9 +19,7 @@ export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   if (!user) return null;
 
-  const items = visibleNavItems(user.capabilities);
-  const work = items.filter((item) => item.section === 'work');
-  const admin = items.filter((item) => item.section === 'admin');
+  const sections = visibleNavSections(user.capabilities);
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
@@ -44,15 +42,16 @@ export function AppShell() {
         </div>
 
         <nav aria-label="Main" className="px-3 pb-6">
-          <NavGroup items={work} onNavigate={() => setDrawerOpen(false)} />
-          {admin.length > 0 ? (
-            <>
-              <p className="mt-5 mb-1 px-2 text-[11px] font-semibold tracking-wider text-ink-faint uppercase">
-                Administration
-              </p>
-              <NavGroup items={admin} onNavigate={() => setDrawerOpen(false)} />
-            </>
-          ) : null}
+          {sections.map((section, index) => (
+            <div key={section.id} className={index > 0 ? 'mt-5' : undefined}>
+              {section.label ? (
+                <p className="mb-1 px-2 text-[11px] font-semibold tracking-wider text-ink-faint uppercase">
+                  {section.label}
+                </p>
+              ) : null}
+              <NavGroup items={section.items} onNavigate={() => setDrawerOpen(false)} />
+            </div>
+          ))}
         </nav>
       </aside>
 

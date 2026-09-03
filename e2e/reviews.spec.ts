@@ -25,6 +25,7 @@ async function openFeedbackFor(page: Page, name: RegExp): Promise<void> {
   await page.goto('/projects');
   await page.getByRole('button', { name: /Full Stack Bootcamp/ }).click();
   await page.getByRole('row', { name }).getByRole('button', { name: 'Open' }).click();
+  await page.getByRole('tab', { name: 'Performance' }).click();
   await page.getByRole('tab', { name: 'Feedback' }).click();
 }
 

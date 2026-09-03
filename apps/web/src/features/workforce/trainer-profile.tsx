@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { Capability } from '@managedops/shared';
 import { Badge, Button, Card, PageHeader, Tabs } from '../../components/ui';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states';
 import { errorMessage } from '../../lib/api';
@@ -35,6 +36,63 @@ type Tab =
   | 'claims'
   | 'flags';
 
+type Group = 'profile' | 'delivery' | 'requests' | 'performance';
+
+/**
+ * The profile in two levels rather than twelve tabs in a row.
+ *
+ * Twelve was past the point where a flat row helps anybody: it wrapped, and
+ * finding "Deliverables" meant reading all of them. The groups are what
+ * somebody is looking for — who this person is, what they are doing, what they
+ * have asked for, how it is going — not which module the code lives in.
+ *
+ * Declared as data so both rows, the capability filtering and the landing tab
+ * all come from one table. Twelve nested ternaries deciding which tab to show
+ * is how the old version got long enough to need this.
+ */
+const TAB_GROUPS: {
+  id: Group;
+  label: string;
+  tabs: { id: Tab; label: string; capability?: Capability }[];
+}[] = [
+  {
+    id: 'profile',
+    label: 'Profile',
+    tabs: [
+      { id: 'overview', label: 'Overview' },
+      { id: 'skills', label: 'Skills', capability: 'skills.read' },
+      { id: 'documents', label: 'Documents', capability: 'trainers.read_documents' },
+    ],
+  },
+  {
+    id: 'delivery',
+    label: 'Delivery',
+    tabs: [
+      { id: 'assignments', label: 'Assignments' },
+      { id: 'attendance', label: 'Attendance', capability: 'attendance.read' },
+      { id: 'log', label: 'Daily Log', capability: 'dailylogs.read' },
+      { id: 'deliverables', label: 'Deliverables', capability: 'deliverables.read' },
+      { id: 'resources', label: 'Resources', capability: 'assets.read' },
+    ],
+  },
+  {
+    id: 'requests',
+    label: 'Requests',
+    tabs: [
+      { id: 'leave', label: 'Leave', capability: 'leave.approve' },
+      { id: 'claims', label: 'Claims', capability: 'reimbursements.approve' },
+    ],
+  },
+  {
+    id: 'performance',
+    label: 'Performance',
+    tabs: [
+      { id: 'feedback', label: 'Feedback', capability: 'reviews.read' },
+      { id: 'flags', label: 'Flags', capability: 'flags.raise' },
+    ],
+  },
+];
+
 /**
  * One trainer, as an administrator sees them. Salary and identity documents are
  * only requested when the caller holds the capability for them, so a project
@@ -53,7 +111,21 @@ export function TrainerProfile({ trainerId, onBack }: { trainerId: string; onBac
     return <ErrorState error={trainer.error} onRetry={() => void trainer.refetch()} />;
   }
 
-  const canSeeDocuments = can('trainers.read_documents');
+  // One filter over the declared table: a group survives only if the caller can
+  // see something in it, so a lead never meets an empty "Requests".
+  const groups = TAB_GROUPS.map((entry) => ({
+    ...entry,
+    tabs: entry.tabs.filter((child) => !child.capability || can(child.capability)),
+  })).filter((entry) => entry.tabs.length > 0);
+
+  const counts: Partial<Record<Tab, number | undefined>> = {
+    skills: skills.data?.length,
+    documents: documents.data?.progress.verified,
+    assignments: trainer.data.assignments.length,
+  };
+
+  const group = groups.find((entry) => entry.tabs.some((child) => child.id === tab))!.id;
+  const firstTabIn = (id: Group) => groups.find((entry) => entry.id === id)!.tabs[0]!.id;
   // Attendance, leave and assets all hang off an assignment. A trainer between
   // projects has none, and the tabs say so rather than showing an empty table.
   const activeAssignmentId =
@@ -94,39 +166,22 @@ export function TrainerProfile({ trainerId, onBack }: { trainerId: string; onBac
       <div className="mb-5">
         <Tabs
           label="Trainer sections"
-          active={tab}
-          onChange={setTab}
-          tabs={[
-            { id: 'overview', label: 'Overview' },
-            // Before Documents: what somebody can teach is the first thing
-            // asked about them, and the tab order should say so.
-            ...(can('skills.read')
-              ? [{ id: 'skills' as const, label: 'Skills', count: skills.data?.length }]
-              : []),
-            ...(can('reviews.read') ? [{ id: 'feedback' as const, label: 'Feedback' }] : []),
-            ...(canSeeDocuments
-              ? [
-                  {
-                    id: 'documents' as const,
-                    label: 'Documents',
-                    count: documents.data?.progress.verified,
-                  },
-                ]
-              : []),
-            { id: 'assignments', label: 'Assignments', count: trainer.data.assignments.length },
-            // Each operational tab appears only for a caller who can read it —
-            // a lead sees their team's attendance, never their colleague's pay.
-            ...(can('attendance.read') ? [{ id: 'attendance' as const, label: 'Attendance' }] : []),
-            ...(can('dailylogs.read') ? [{ id: 'log' as const, label: 'Daily Log' }] : []),
-            ...(can('deliverables.read')
-              ? [{ id: 'deliverables' as const, label: 'Deliverables' }]
-              : []),
-            ...(can('leave.approve') ? [{ id: 'leave' as const, label: 'Leave' }] : []),
-            ...(can('assets.read') ? [{ id: 'resources' as const, label: 'Resources' }] : []),
-            ...(can('reimbursements.approve') ? [{ id: 'claims' as const, label: 'Claims' }] : []),
-            ...(can('flags.raise') ? [{ id: 'flags' as const, label: 'Flags' }] : []),
-          ]}
+          active={group}
+          onChange={(next) => setTab(firstTabIn(next))}
+          tabs={groups.map((entry) => ({ id: entry.id, label: entry.label }))}
         />
+        {/* Only worth a second row when there is a choice to make in it. */}
+        {groups.find((entry) => entry.id === group)!.tabs.length > 1 ? (
+          <Tabs
+            variant="secondary"
+            label={`${groups.find((entry) => entry.id === group)!.label} sections`}
+            active={tab}
+            onChange={setTab}
+            tabs={groups
+              .find((entry) => entry.id === group)!
+              .tabs.map((entry) => ({ ...entry, count: counts[entry.id] }))}
+          />
+        ) : null}
       </div>
 
       {tab === 'overview' ? (
