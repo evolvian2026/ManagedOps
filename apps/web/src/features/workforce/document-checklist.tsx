@@ -1,21 +1,22 @@
 import { useRef, useState } from 'react';
-import type { DocumentProgress, TrainerDocumentType } from '@managedops/shared';
+import {
+  EXPIRING_DOCUMENT_TYPES,
+  defaultExpiryFor,
+  documentLabel,
+  type DocumentProgress,
+  type TrainerDocumentType,
+} from '@managedops/shared';
 import { ApiError, errorMessage } from '../../lib/api';
 import { Badge, Button, Field, Modal, TextArea } from '../../components/ui';
 import { openResume } from '../onboarding/api';
 import { formatDate } from '../onboarding/format';
 import { uploadFile, useUploadDocument, useVerifyDocument, type TrainerDocumentRow } from './api';
 
-const LABELS: Record<string, string> = {
-  aadhaar: 'Aadhaar',
-  pan: 'PAN',
-  education_certificate: 'Education certificate',
-  experience_certificate: 'Experience certificate',
-  photo: 'Photograph',
-};
-
 /** Aadhaar and PAN identifiers are never stored in full (spec 15.16). */
 const NEEDS_LAST_FOUR = new Set(['aadhaar', 'pan']);
+
+/** The types that lapse, which cannot be filed without saying when. */
+const NEEDS_EXPIRY = new Set<string>(EXPIRING_DOCUMENT_TYPES);
 
 const STATUS_TONE: Record<string, 'neutral' | 'positive' | 'pending' | 'critical'> = {
   pending: 'pending',
@@ -76,7 +77,7 @@ export function DocumentChecklist({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-ink">
-                  {LABELS[document.docType] ?? document.docType}
+                  {documentLabel(document.docType, { capitalise: true })}
                 </span>
                 <Badge tone={STATUS_TONE[document.status] ?? 'neutral'}>
                   {document.status === 'pending' && !document.hasFile
@@ -95,6 +96,22 @@ export function DocumentChecklist({
               <div className="mt-1 space-y-0.5 text-xs text-ink-soft">
                 {document.lastFour ? (
                   <p className="tabular-nums">Ends in {document.lastFour}</p>
+                ) : null}
+                {document.validity.state !== 'not_applicable' ? (
+                  <p
+                    className={
+                      document.validity.state === 'expired'
+                        ? 'font-medium text-danger'
+                        : document.validity.state === 'valid'
+                          ? 'text-ink-soft'
+                          : 'font-medium text-accent'
+                    }
+                  >
+                    {document.expiresOn ? `Expires ${formatDate(document.expiresOn)}` : null}
+                    {document.validity.message
+                      ? `${document.expiresOn ? ' · ' : ''}${document.validity.message}`
+                      : null}
+                  </p>
                 ) : null}
                 {document.verifiedAt && document.verifiedBy ? (
                   <p>
@@ -167,10 +184,11 @@ function UploadButton({ trainerId, docType }: { trainerId: string; docType: Trai
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [lastFour, setLastFour] = useState('');
+  const [expiresOn, setExpiresOn] = useState('');
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const upload = useUploadDocument(trainerId);
 
-  async function send(file: File, fourChars?: string) {
+  async function send(file: File, fourChars?: string, expiry?: string) {
     setPending(true);
     setProblem(null);
     try {
@@ -178,9 +196,15 @@ function UploadButton({ trainerId, docType }: { trainerId: string; docType: Trai
         file,
         docType === 'aadhaar' || docType === 'pan' ? 'identity_document' : 'certificate',
       );
-      await upload.mutateAsync({ docType, fileId, ...(fourChars ? { lastFour: fourChars } : {}) });
+      await upload.mutateAsync({
+        docType,
+        fileId,
+        ...(fourChars ? { lastFour: fourChars } : {}),
+        ...(expiry ? { expiresOn: expiry } : {}),
+      });
       setPendingFile(null);
       setLastFour('');
+      setExpiresOn('');
     } catch (error) {
       setProblem(errorMessage(error));
     } finally {
@@ -192,7 +216,11 @@ function UploadButton({ trainerId, docType }: { trainerId: string; docType: Trai
     if (!file) return;
     // Aadhaar and PAN need their last four characters, so ask before uploading
     // rather than failing validation after the file has already gone up.
-    if (NEEDS_LAST_FOUR.has(docType)) {
+    if (NEEDS_LAST_FOUR.has(docType) || NEEDS_EXPIRY.has(docType)) {
+      // Ask before the file goes up rather than failing validation after it has.
+      if (NEEDS_EXPIRY.has(docType)) {
+        setExpiresOn(defaultExpiryFor(docType, new Date().toISOString().slice(0, 10)) ?? '');
+      }
       setPendingFile(file);
       return;
     }
@@ -220,27 +248,46 @@ function UploadButton({ trainerId, docType }: { trainerId: string; docType: Trai
 
       <Modal
         open={Boolean(pendingFile)}
-        title={`Upload your ${LABELS[docType] ?? docType}`}
-        description="We store the document itself and only the last four characters of the number."
+        title={`Upload your ${documentLabel(docType)}`}
+        description={
+          NEEDS_EXPIRY.has(docType)
+            ? 'This kind of document lapses, so we need to know when.'
+            : 'We store the document itself and only the last four characters of the number.'
+        }
         onClose={() => setPendingFile(null)}
       >
         <div className="space-y-5">
-          <Field
-            label="Last four characters"
-            required
-            maxLength={4}
-            value={lastFour}
-            hint="Enough to tell two documents apart. The full number is never stored."
-            onChange={(event) => setLastFour(event.target.value.toUpperCase())}
-          />
+          {NEEDS_LAST_FOUR.has(docType) ? (
+            <Field
+              label="Last four characters"
+              required
+              maxLength={4}
+              value={lastFour}
+              hint="Enough to tell two documents apart. The full number is never stored."
+              onChange={(event) => setLastFour(event.target.value.toUpperCase())}
+            />
+          ) : null}
+          {NEEDS_EXPIRY.has(docType) ? (
+            <Field
+              label="Expires on"
+              type="date"
+              required
+              value={expiresOn}
+              hint="Taken from the certificate. Prefilled with the usual validity — correct it if yours differs."
+              onChange={(event) => setExpiresOn(event.target.value)}
+            />
+          ) : null}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setPendingFile(null)}>
               Cancel
             </Button>
             <Button
               pending={pending}
-              disabled={lastFour.length !== 4}
-              onClick={() => pendingFile && void send(pendingFile, lastFour)}
+              disabled={
+                (NEEDS_LAST_FOUR.has(docType) && lastFour.length !== 4) ||
+                (NEEDS_EXPIRY.has(docType) && !expiresOn)
+              }
+              onClick={() => pendingFile && void send(pendingFile, lastFour, expiresOn)}
             >
               Upload
             </Button>
@@ -293,7 +340,7 @@ function RejectDialog({
     <Modal
       open={Boolean(document)}
       title="Reject this document"
-      description={document ? (LABELS[document.docType] ?? document.docType) : undefined}
+      description={document ? documentLabel(document.docType, { capitalise: true }) : undefined}
       onClose={close}
     >
       <div className="space-y-5">

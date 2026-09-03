@@ -45,6 +45,11 @@ export const SCHEDULED_JOBS: readonly ScheduledJob[] = [
     description: 'Send 24h and 72h document reminders, escalating to HR at 72h',
   },
   {
+    name: 'documents.expiry.remind',
+    cron: '30 10 * * *',
+    description: 'Warn a month before a document lapses, and tell HR once it has',
+  },
+  {
     name: 'leave.escalate',
     cron: '0 * * * *',
     description: 'Escalate leave requests undecided for 24 hours',

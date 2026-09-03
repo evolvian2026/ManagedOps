@@ -1,14 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import {
+  DOCUMENT_EXPIRY_WARNING_DAYS,
+  DOCUMENT_LABELS,
   DOCUMENT_REMINDER_HOURS,
+  EXPIRING_DOCUMENT_TYPES,
   MANDATORY_TRAINER_DOCUMENTS,
   can,
+  documentValidity,
+  toIstDateString,
+  type DocumentExpiryQuery,
   type DocumentProgress,
   type UploadDocumentInput,
   type VerifyDocumentInput,
 } from '@managedops/shared';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { newId } from '../../common/ids.js';
+import { paginate, toPrismaPage } from '../../common/pagination.js';
 import { DomainRuleProblem, ForbiddenProblem, NotFoundProblem } from '../../common/errors.js';
 import { scopedWhere, trainerScope } from '../../common/scope.js';
 import { FilesService } from '../files/files.service.js';
@@ -16,13 +23,8 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import type { AuthenticatedUser } from '../../common/decorators/index.js';
 import { TrainersService } from './trainers.service.js';
 
-const DOCUMENT_LABELS: Record<string, string> = {
-  aadhaar: 'Aadhaar',
-  pan: 'PAN',
-  education_certificate: 'education certificate',
-  experience_certificate: 'experience certificate',
-  photo: 'photograph',
-};
+/** What the expiry queue may be ordered by. */
+const EXPIRY_SORTABLE = ['expiresOn', 'docType', 'updatedAt'] as const;
 
 @Injectable()
 export class DocumentsService {
@@ -57,6 +59,7 @@ export class DocumentsService {
         rejectReason: true,
         verifiedAt: true,
         verifiedBy: { select: { id: true, name: true } },
+        expiresOn: true,
         updatedAt: true,
       },
       orderBy: { docType: 'asc' },
@@ -65,8 +68,12 @@ export class DocumentsService {
     const mayOpen = user.trainerId === trainerId || can(user.role, 'trainers.read_documents');
 
     return {
-      data: documents.map(({ fileId, ...document }) => ({
+      data: documents.map(({ fileId, expiresOn, ...document }) => ({
         ...document,
+        expiresOn: expiresOn ? toIstDateString(expiresOn) : null,
+        // Derived on every read rather than stored: a saved "valid" becomes a
+        // lie the moment the calendar moves past it, and nothing would notice.
+        validity: documentValidity(document.docType, expiresOn ? toIstDateString(expiresOn) : null),
         // Whether something was uploaded is not the same question as whether
         // this caller may read it, so the two are answered separately.
         hasFile: fileId !== null,
@@ -108,6 +115,10 @@ export class DocumentsService {
         rejectReason: null,
         verifiedById: null,
         verifiedAt: null,
+        expiresOn: input.expiresOn ? new Date(`${input.expiresOn}T00:00:00.000Z`) : null,
+        // A renewal is a fresh document, so the chase starts again. Leaving the
+        // stage where it was would mean the replacement never got a reminder.
+        expiryReminderStage: 0,
       },
       create: {
         id: newId(),
@@ -116,8 +127,16 @@ export class DocumentsService {
         fileId: input.fileId,
         lastFour: input.lastFour,
         status: 'pending',
+        expiresOn: input.expiresOn ? new Date(`${input.expiresOn}T00:00:00.000Z`) : null,
       },
-      select: { id: true, docType: true, status: true, lastFour: true, fileId: true },
+      select: {
+        id: true,
+        docType: true,
+        status: true,
+        lastFour: true,
+        fileId: true,
+        expiresOn: true,
+      },
     });
 
     await this.files.attach(input.fileId, 'TrainerDocument', document.id);
@@ -303,5 +322,144 @@ export class DocumentsService {
     if (can(actor.role, 'trainers.upload_documents') && actor.trainerId === trainerId) return;
 
     throw new ForbiddenProblem('You can only upload your own documents.');
+  }
+
+  /**
+   * The documents that are lapsing, across everybody the caller may see.
+   *
+   * Scoped through the trainer, so a project lead sees their own team and a
+   * trainer sees themselves. The file id is withheld exactly as it is on the
+   * checklist — knowing that somebody's police verification runs out next week
+   * is a different question from being allowed to open it.
+   */
+  async expiring(query: DocumentExpiryQuery, user: AuthenticatedUser) {
+    const today = toIstDateString(new Date());
+    const horizon = new Date(`${today}T00:00:00.000Z`);
+    horizon.setUTCDate(horizon.getUTCDate() + DOCUMENT_EXPIRY_WARNING_DAYS);
+
+    // Anything of a lapsing type that is either undated or inside the window.
+    // Filtering in SQL rather than reading every document and discarding most.
+    const where = scopedWhere(
+      { trainer: trainerScope(user) },
+      {
+        docType: { in: [...EXPIRING_DOCUMENT_TYPES] },
+        ...(query.projectId
+          ? { trainer: { assignments: { some: { projectId: query.projectId } } } }
+          : {}),
+        ...(query.state === 'missing_date'
+          ? { expiresOn: null }
+          : query.state === 'expired'
+            ? { expiresOn: { lt: new Date(`${today}T00:00:00.000Z`) } }
+            : query.state === 'expiring_soon'
+              ? { expiresOn: { gte: new Date(`${today}T00:00:00.000Z`), lte: horizon } }
+              : {
+                  OR: [{ expiresOn: null }, { expiresOn: { lte: horizon } }],
+                }),
+      },
+    );
+
+    const page = toPrismaPage(query, EXPIRY_SORTABLE, { expiresOn: 'asc' });
+    const [rows, total] = await Promise.all([
+      this.prisma.db.trainerDocument.findMany({
+        where,
+        ...page,
+        select: {
+          id: true,
+          docType: true,
+          status: true,
+          expiresOn: true,
+          fileId: true,
+          trainer: {
+            select: {
+              id: true,
+              employeeCode: true,
+              status: true,
+              user: { select: { name: true, email: true } },
+              assignments: {
+                where: { status: 'active' },
+                select: { project: { select: { id: true, name: true } } },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.db.trainerDocument.count({ where }),
+    ]);
+
+    const mayOpen = can(user.role, 'trainers.read_documents');
+
+    return paginate(
+      rows.map(({ fileId, expiresOn, trainer, ...document }) => ({
+        ...document,
+        expiresOn: expiresOn ? toIstDateString(expiresOn) : null,
+        validity: documentValidity(
+          document.docType,
+          expiresOn ? toIstDateString(expiresOn) : null,
+          { today },
+        ),
+        hasFile: fileId !== null,
+        fileId: mayOpen || user.trainerId === trainer.id ? fileId : null,
+        trainer: {
+          id: trainer.id,
+          employeeCode: trainer.employeeCode,
+          status: trainer.status,
+          name: trainer.user.name,
+          projects: [...new Set(trainer.assignments.map((a) => a.project.name))],
+        },
+      })),
+      total,
+      query,
+    );
+  }
+
+  /**
+   * Documents due an expiry reminder, with the stage that is owed.
+   *
+   * Stage 1 goes out a month ahead and stage 2 once it has lapsed. The stage
+   * already recorded is what stops a daily job sending the same one every day,
+   * and a replaced document has it reset so the new one gets chased too.
+   */
+  async dueForExpiryReminder(now = new Date()) {
+    const today = toIstDateString(now);
+    const horizon = new Date(`${today}T00:00:00.000Z`);
+    horizon.setUTCDate(horizon.getUTCDate() + DOCUMENT_EXPIRY_WARNING_DAYS);
+
+    const rows = await this.prisma.db.trainerDocument.findMany({
+      where: {
+        docType: { in: [...EXPIRING_DOCUMENT_TYPES] },
+        expiresOn: { not: null, lte: horizon },
+        // Somebody who has left is not chased about a certificate.
+        trainer: { status: { in: ['active', 'pending_onboarding'] }, deletedAt: null },
+      },
+      select: {
+        id: true,
+        docType: true,
+        expiresOn: true,
+        expiryReminderStage: true,
+        trainer: {
+          select: {
+            id: true,
+            personalEmail: true,
+            onboardingHrId: true,
+            user: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+
+    return rows
+      .map((row) => {
+        const validity = documentValidity(row.docType, toIstDateString(row.expiresOn!), { today });
+        const owed = validity.state === 'expired' ? 2 : validity.state === 'expiring_soon' ? 1 : 0;
+        return { document: row, validity, stage: owed };
+      })
+      .filter((entry) => entry.stage > entry.document.expiryReminderStage);
+  }
+
+  async markExpiryReminderSent(documentId: string, stage: number) {
+    await this.prisma.db.trainerDocument.update({
+      where: { id: documentId },
+      data: { expiryReminderStage: stage },
+    });
   }
 }

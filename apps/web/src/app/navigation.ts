@@ -30,6 +30,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Clients', path: '/clients', capability: 'clients.read', section: 'work' },
   { label: 'Margin', path: '/margin', capability: 'billing.read', section: 'work' },
   { label: 'Payroll', path: '/payroll', capability: 'payroll.read', section: 'work' },
+  // The queue of what is lapsing. Scoped like any trainer read, so a lead
+  // sees their own team and a trainer sees themselves.
+  { label: 'Documents', path: '/documents', capability: 'trainers.read', section: 'work' },
 
   // Trainer self-service.
   {

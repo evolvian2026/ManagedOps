@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   ASSIGNMENT_ROLES,
+  EXPIRING_DOCUMENT_TYPES,
   DOCUMENT_STATUSES,
   TRAINER_DOCUMENT_TYPES,
   TRAINER_STATUSES,
@@ -80,6 +81,14 @@ export const uploadDocumentSchema = z
       .toUpperCase()
       .regex(/^[A-Z0-9]{4}$/, 'Enter exactly the last four characters')
       .optional(),
+    /**
+     * When it stops being worth anything.
+     *
+     * Required for the types that lapse, because a police verification filed
+     * without one is indistinguishable from a current one until somebody looks
+     * at the certificate — by which point it is usually the client looking.
+     */
+    expiresOn: dateStringSchema.optional(),
   })
   .strict()
   .refine(
@@ -88,7 +97,15 @@ export const uploadDocumentSchema = z
       path: ['lastFour'],
       message: 'Give the last four characters so this document can be identified later',
     },
-  );
+  )
+  .refine((value) => !EXPIRING_DOCUMENT_TYPES.includes(value.docType) || value.expiresOn != null, {
+    path: ['expiresOn'],
+    message: 'Say when it expires — this kind of document lapses',
+  })
+  .refine((value) => value.expiresOn == null || !['aadhaar', 'pan'].includes(value.docType), {
+    path: ['expiresOn'],
+    message: 'This kind of document does not expire',
+  });
 export type UploadDocumentInput = z.infer<typeof uploadDocumentSchema>;
 
 export const verifyDocumentSchema = z
@@ -155,3 +172,21 @@ export interface DocumentProgress {
   /** Hours since the account was created, which drives the reminder stages. */
   hoursSinceCreated: number;
 }
+
+/* ------------------------------------------------------- document expiry */
+
+/**
+ * What is lapsing.
+ *
+ * `state` filters to one of the derived validity states rather than to a date
+ * range, because "expired" and "expiring soon" are the questions somebody
+ * actually asks — a date range would make them work out the window themselves
+ * and get it subtly different from the reminder job.
+ */
+export const documentExpiryQuerySchema = paginationSchema
+  .extend({
+    state: z.enum(['expiring_soon', 'expired', 'missing_date']).optional(),
+    projectId: uuidSchema.optional(),
+  })
+  .strict();
+export type DocumentExpiryQuery = z.infer<typeof documentExpiryQuerySchema>;

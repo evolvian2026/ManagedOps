@@ -125,14 +125,71 @@ export const TRAINER_DOCUMENT_TYPES = [
   'education_certificate',
   'experience_certificate',
   'photo',
+  'police_verification',
+  'medical_certificate',
 ] as const;
 export type TrainerDocumentType = (typeof TRAINER_DOCUMENT_TYPES)[number];
 
+/**
+ * What onboarding will not complete without.
+ *
+ * The documents that lapse are deliberately absent. They are ongoing
+ * compliance, not a gate on somebody's first day: making a police verification
+ * mandatory to onboard would block a joiner over a certificate that takes weeks
+ * to come back, and it would still say nothing about whether it is current a
+ * year later — which is the thing that actually matters.
+ */
 export const MANDATORY_TRAINER_DOCUMENTS: readonly TrainerDocumentType[] = [
   'aadhaar',
   'pan',
   'education_certificate',
 ];
+
+/**
+ * The documents that stop being worth anything, and how long they last.
+ *
+ * A client asks for a *current* police verification before somebody sets foot
+ * on their site, and an expired one is worth exactly as much as none. The
+ * months are the usual validity in India and only ever prefill a date — what
+ * governs is the date on the document itself.
+ */
+export const DOCUMENT_VALIDITY_MONTHS: Partial<Record<TrainerDocumentType, number>> = {
+  police_verification: 12,
+  medical_certificate: 12,
+};
+
+export const EXPIRING_DOCUMENT_TYPES: readonly TrainerDocumentType[] = Object.keys(
+  DOCUMENT_VALIDITY_MONTHS,
+) as TrainerDocumentType[];
+
+/**
+ * What to call each document when talking to a person.
+ *
+ * Written for the middle of a sentence — "their education certificate" — with
+ * proper nouns kept capitalised. `documentLabel` puts a capital on the front
+ * for the cases that start a line, which is the only difference the two callers
+ * needed and the reason there used to be two divergent copies of this.
+ */
+export const DOCUMENT_LABELS: Readonly<Record<TrainerDocumentType, string>> = {
+  aadhaar: 'Aadhaar',
+  pan: 'PAN',
+  education_certificate: 'education certificate',
+  experience_certificate: 'experience certificate',
+  photo: 'photograph',
+  police_verification: 'police verification',
+  medical_certificate: 'medical certificate',
+};
+
+export function documentLabel(
+  docType: TrainerDocumentType | string,
+  options: { capitalise?: boolean } = {},
+): string {
+  const label = DOCUMENT_LABELS[docType as TrainerDocumentType] ?? docType;
+  return options.capitalise ? label.charAt(0).toUpperCase() + label.slice(1) : label;
+}
+
+/** How long before a document lapses it starts being somebody's problem. */
+export const DOCUMENT_EXPIRY_WARNING_DAYS = 30;
 
 export const DOCUMENT_STATUSES = ['pending', 'verified', 'rejected'] as const;
 export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
@@ -233,6 +290,8 @@ export const NOTIFICATION_TYPES = [
   'credentials_issued',
   'document_reminder',
   'document_escalation',
+  'document_expiry',
+  'document_expiry_escalation',
   'document_rejected',
   'leave_submitted',
   'leave_escalated',

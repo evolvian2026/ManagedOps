@@ -1,10 +1,14 @@
 import {
+  DOCUMENT_EXPIRY_WARNING_DAYS,
+  DOCUMENT_VALIDITY_MONTHS,
+  EXPIRING_DOCUMENT_TYPES,
   LEAVE_DAY_TYPES,
   PROFICIENCIES,
   PROFICIENCY_RANK,
   type LeaveDayType,
   type Proficiency,
   type ReviewSource,
+  type TrainerDocumentType,
   type SkillRequirement,
 } from './enums.js';
 
@@ -1010,4 +1014,95 @@ function averageOf(
 function mean(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   return values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+/* ------------------------------------------------------- document validity */
+
+/**
+ * Whether a document is still worth anything.
+ *
+ * Derived, never stored — the same reason an attendance status is derived from
+ * its punches. A stored "valid" is a lie the moment the calendar moves past it,
+ * and nothing would notice until somebody read the row.
+ *
+ * The state that matters most is `missing_date`. A police verification with no
+ * expiry recorded is a gap to chase, not a document that is valid forever, and
+ * treating an absent date as "fine" is precisely how an expired one reaches a
+ * client site.
+ */
+export type DocumentValidityState =
+  | 'not_applicable'
+  | 'valid'
+  | 'expiring_soon'
+  | 'expired'
+  | 'missing_date';
+
+export interface DocumentValidity {
+  state: DocumentValidityState;
+  /** Days until it lapses; negative once it has. Null when there is no date. */
+  daysRemaining: number | null;
+  /** What to tell somebody about it, in a sentence. */
+  message: string | null;
+}
+
+export function documentValidity(
+  docType: TrainerDocumentType,
+  expiresOn: string | null | undefined,
+  options: { today?: string; warningDays?: number } = {},
+): DocumentValidity {
+  const warningDays = options.warningDays ?? DOCUMENT_EXPIRY_WARNING_DAYS;
+
+  if (!EXPIRING_DOCUMENT_TYPES.includes(docType)) {
+    return { state: 'not_applicable', daysRemaining: null, message: null };
+  }
+
+  if (!expiresOn) {
+    return {
+      state: 'missing_date',
+      daysRemaining: null,
+      message: 'No expiry date recorded, so nobody can tell whether this is still current.',
+    };
+  }
+
+  const today = options.today ?? new Date().toISOString().slice(0, 10);
+  const daysRemaining = daysBetween(today, expiresOn);
+
+  if (daysRemaining < 0) {
+    const days = Math.abs(daysRemaining);
+    return {
+      state: 'expired',
+      daysRemaining,
+      message: `Expired ${days} day${days === 1 ? '' : 's'} ago.`,
+    };
+  }
+
+  if (daysRemaining <= warningDays) {
+    return {
+      state: 'expiring_soon',
+      daysRemaining,
+      message:
+        daysRemaining === 0
+          ? 'Expires today.'
+          : `Expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}.`,
+    };
+  }
+
+  return { state: 'valid', daysRemaining, message: null };
+}
+
+/** The date a document of this type would run to, from the day it was issued. */
+export function defaultExpiryFor(docType: TrainerDocumentType, issuedOn: string): string | null {
+  const months = DOCUMENT_VALIDITY_MONTHS[docType];
+  if (months == null) return null;
+
+  const date = new Date(`${issuedOn}T00:00:00Z`);
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Whole days from one calendar date to another, ignoring clocks entirely. */
+function daysBetween(from: string, to: string): number {
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  return Math.round((end - start) / 86_400_000);
 }

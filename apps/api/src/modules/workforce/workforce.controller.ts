@@ -13,6 +13,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   assignmentQuerySchema,
   convertOfferSchema,
+  documentExpiryQuerySchema,
   createAssignmentSchema,
   endAssignmentSchema,
   setBillRateSchema,
@@ -24,6 +25,7 @@ import {
   type AssignmentQuery,
   type ConvertOfferInput,
   type CreateAssignmentInput,
+  type DocumentExpiryQuery,
   type SetBillRateInput,
   type TrainerQuery,
   type UpdateTrainerInput,
@@ -98,6 +100,17 @@ export class TrainersController {
   }
 
   /* ------------------------------------------------------------ documents */
+
+  // Before ':id' so "documents/expiring" is never parsed as a trainer id.
+  @Get('documents/expiring')
+  @RequireCapability('trainers.read')
+  @ApiOperation({ summary: 'Documents that have lapsed or are about to' })
+  expiring(
+    @Query(validate(documentExpiryQuerySchema)) query: DocumentExpiryQuery,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.expiring(query, user);
+  }
 
   @Get(':id/documents')
   @RequireCapability('trainers.read')

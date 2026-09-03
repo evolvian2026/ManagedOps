@@ -3,6 +3,7 @@ import type {
   AssignmentRole,
   DocumentProgress,
   DocumentStatus,
+  DocumentValidity,
   TrainerDocumentType,
   TrainerStatus,
 } from '@managedops/shared';
@@ -70,7 +71,39 @@ export interface TrainerDocumentRow {
   rejectReason: string | null;
   verifiedAt: string | null;
   verifiedBy: { id: string; name: string } | null;
+  expiresOn: string | null;
+  /** Derived on every read; a stored "valid" goes stale the moment time passes. */
+  validity: DocumentValidity;
   mandatory?: boolean;
+}
+
+export interface ExpiringDocumentRow {
+  id: string;
+  docType: TrainerDocumentType;
+  status: DocumentStatus;
+  expiresOn: string | null;
+  validity: DocumentValidity;
+  hasFile: boolean;
+  fileId: string | null;
+  trainer: {
+    id: string;
+    employeeCode: string;
+    status: string;
+    name: string;
+    projects: string[];
+  };
+}
+
+export type ExpiryState = 'expiring_soon' | 'expired' | 'missing_date';
+
+export function useExpiringDocuments(state: ExpiryState | '' = '') {
+  const search = new URLSearchParams({ pageSize: '100', sort: 'expiresOn' });
+  if (state) search.set('state', state);
+  return useQuery({
+    queryKey: ['expiring-documents', state],
+    queryFn: ({ signal }) =>
+      api.get<Page<ExpiringDocumentRow>>(`/trainers/documents/expiring?${search}`, signal),
+  });
 }
 
 export interface TrainerDetail {
@@ -152,7 +185,9 @@ function useWorkforceMutation<TInput, TResult>(request: (input: TInput) => Promi
       // Verifying the last document can activate a trainer, which changes the
       // roster and the profile as well as the document row that was clicked.
       await Promise.all(
-        ['trainer', 'roster', 'projects', 'assignments'].map((key) =>
+        // A renewal changes the expiry queue as much as the checklist it was
+        // uploaded from, and that queue is the one somebody is watching.
+        ['trainer', 'roster', 'projects', 'assignments', 'expiring-documents'].map((key) =>
           queryClient.invalidateQueries({ queryKey: [key] }),
         ),
       );
@@ -172,8 +207,12 @@ export function useVerifyDocument(trainerId: string) {
 
 export function useUploadDocument(trainerId: string) {
   return useWorkforceMutation(
-    (input: { docType: TrainerDocumentType; fileId: string; lastFour?: string }) =>
-      api.post(`/trainers/${trainerId}/documents`, input),
+    (input: {
+      docType: TrainerDocumentType;
+      fileId: string;
+      lastFour?: string;
+      expiresOn?: string;
+    }) => api.post(`/trainers/${trainerId}/documents`, input),
   );
 }
 

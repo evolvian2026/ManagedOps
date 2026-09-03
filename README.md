@@ -337,6 +337,51 @@ that decides whether we would work with them again.
 
 ---
 
+## Documents that lapse
+
+Aadhaar, PAN and a degree certificate do not expire. A police verification and
+a medical certificate do — and a client asks for a _current_ one before somebody
+sets foot on their site. Those two types were missing from the schema entirely;
+they are there now, with an `expiresOn` beside them.
+
+**Validity is derived, never stored.** A saved "valid" becomes a lie the moment
+the calendar moves past it and nothing would notice, so `documentValidity`
+computes it on every read — the same reason an attendance status comes from its
+punches.
+
+| State            | Means                          |
+| ---------------- | ------------------------------ |
+| `not_applicable` | This type does not lapse       |
+| `valid`          | More than 30 days left         |
+| `expiring_soon`  | Inside 30 days                 |
+| `expired`        | The date has passed            |
+| `missing_date`   | It lapses and nobody said when |
+
+`missing_date` is the one that matters. A police verification filed without a
+date is a gap to chase, not a document that is valid forever — treating an
+absent date as "fine" is precisely how an expired one reaches a client site. So
+it sits on the queue alongside the expired ones, and uploading a lapsing type
+without a date is refused.
+
+**They are not mandatory for onboarding.** They are ongoing compliance, not a
+gate on somebody's first day: a police verification takes weeks to come back and
+would block every joiner, and it would still say nothing about whether it is
+current a year later.
+
+`documents.expiry.remind` runs daily. A month out the trainer hears about it;
+once it has actually lapsed HR does too, because an expired verification is not
+the trainer's problem alone. Escalating a month early would train HR to ignore
+the message that matters. `expiryReminderStage` stops a daily job repeating
+itself, and uploading a replacement resets it so the new document is chased in
+its turn.
+
+The queue is scoped like any trainer read — a lead sees their team, a trainer
+sees themselves — and the file id is withheld from anyone without
+`trainers.read_documents`. Knowing that somebody's verification lapsed is a
+different question from being allowed to open it.
+
+---
+
 ## Errors
 
 Every failure is an RFC 9457 Problem Details document with a stable `type` and a

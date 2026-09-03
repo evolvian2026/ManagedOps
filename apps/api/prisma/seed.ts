@@ -629,6 +629,59 @@ async function main(): Promise<void> {
       });
     }
 
+    // The documents that lapse. Varied on purpose so the expiry queue has all
+    // three of its states to show: one current, one running out inside the
+    // month, one already expired, and one filed with no date at all — which is
+    // a gap to chase rather than a document that is valid forever.
+    const lapsing = [
+      { docType: 'police_verification' as const, expiresInDays: 300 },
+      { docType: 'medical_certificate' as const, expiresInDays: 18 },
+    ];
+    const expiryOverrides: Record<number, { docType: 'police_verification'; days: number | null }> =
+      {
+        1: { docType: 'police_verification', days: -12 },
+        2: { docType: 'police_verification', days: null },
+      };
+
+    for (const entry of lapsing) {
+      const existing = await prisma.trainerDocument.findUnique({
+        where: { trainerId_docType: { trainerId: trainer.trainerId, docType: entry.docType } },
+      });
+      if (existing) continue;
+
+      const override =
+        expiryOverrides[index]?.docType === entry.docType ? expiryOverrides[index] : undefined;
+      const days = override ? override.days : entry.expiresInDays;
+
+      const fileId = uuidv7();
+      await prisma.fileObject.create({
+        data: {
+          id: fileId,
+          storageKey: `identity/${trainer.trainerId}/${entry.docType}.pdf`,
+          originalName: `${entry.docType}.pdf`,
+          mimeType: 'application/pdf',
+          sizeBytes: 72_000,
+          uploadedById: trainer.userId,
+          ownerType: 'TrainerDocument',
+          confirmedAt: daysFromToday(-40),
+          scanStatus: 'skipped',
+        },
+      });
+
+      await prisma.trainerDocument.create({
+        data: {
+          id: uuidv7(),
+          trainerId: trainer.trainerId,
+          docType: entry.docType,
+          fileId,
+          status: 'verified',
+          verifiedById: users.hr!.id,
+          verifiedAt: daysFromToday(-39),
+          expiresOn: days == null ? null : dateOnly(daysFromToday(days)),
+        },
+      });
+    }
+
     if (midOnboarding) {
       // Status follows the facts: paperwork outstanding means still onboarding.
       await prisma.trainer.update({

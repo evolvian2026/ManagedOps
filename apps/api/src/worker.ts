@@ -45,6 +45,9 @@ async function bootstrap(): Promise<void> {
     'onboarding.document.remind': async () => {
       await onboardingJobs.sendDocumentReminders();
     },
+    'documents.expiry.remind': async () => {
+      await onboardingJobs.sendExpiryReminders();
+    },
     'attendance.close.day': async () => {
       await operationsJobs.closeAttendanceDay();
     },

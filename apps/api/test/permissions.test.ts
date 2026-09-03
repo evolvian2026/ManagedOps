@@ -59,6 +59,13 @@ const ROUTES: RouteUnderTest[] = [
     capabilities: ['matching.read'],
   },
 
+  // Document compliance
+  {
+    method: 'get',
+    path: '/api/v1/trainers/documents/expiring',
+    capabilities: ['trainers.read'],
+  },
+
   // Feedback
   { method: 'get', path: '/api/v1/reviews', capabilities: ['reviews.read'] },
   { method: 'post', path: '/api/v1/reviews', capabilities: ['reviews.write'], body: {} },

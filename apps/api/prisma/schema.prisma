@@ -146,6 +146,11 @@ enum TrainerDocumentType {
   education_certificate
   experience_certificate
   photo
+  /// The two that lapse. A client will ask for a current police verification
+  /// before somebody sets foot on their site, and an expired one is worth the
+  /// same as none — which is why they are tracked rather than merely collected.
+  police_verification
+  medical_certificate
 }
 
 enum DocumentStatus {
@@ -909,6 +914,15 @@ model TrainerDocument {
   verifiedAt   DateTime?
   rejectReason String?
 
+  /// When it stops being worth anything. Null for a document that does not
+  /// lapse — and, for one that does, a gap rather than a reassurance: the
+  /// validity rules report a missing date as something to chase, never as
+  /// valid forever.
+  expiresOn DateTime? @db.Date
+  /// Which expiry reminder has already gone out, so a retry of the daily job
+  /// cannot send the same one twice. Reset when the document is replaced.
+  expiryReminderStage Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -918,6 +932,8 @@ model TrainerDocument {
 
   @@unique([trainerId, docType])
   @@index([status])
+  /// The expiry queue reads this: what lapses soonest, first.
+  @@index([expiresOn])
   @@map("trainer_documents")
 }
 

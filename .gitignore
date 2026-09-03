@@ -33,3 +33,8 @@ e2e/playwright-report/
 # Terraform variable files name the network this runs in.
 infra/terraform/env/*.tfvars
 infra/terraform/backend.tf
+
+# Throwaway screenshot drivers written while checking a screen by hand. They
+# are not part of the suite and keep being left behind at the repo root.
+/shot*.mjs
+/*.screenshot.mjs
