@@ -16,6 +16,7 @@ import { IdentityModule } from './modules/identity/identity.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
 import { CommercialModule } from './modules/commercial/commercial.module.js';
 import { SkillsModule } from './modules/skills/skills.module.js';
+import { PayrollModule } from './modules/payroll/payroll.module.js';
 import { ProjectsModule } from './modules/projects/projects.module.js';
 import { RecruitmentModule } from './modules/recruitment/recruitment.module.js';
 import { WorkforceModule } from './modules/workforce/workforce.module.js';
@@ -35,6 +36,7 @@ import { JobsModule } from './jobs/jobs.module.js';
     IdentityModule,
     CommercialModule,
     SkillsModule,
+    PayrollModule,
     ProjectsModule,
     RecruitmentModule,
     WorkforceModule,

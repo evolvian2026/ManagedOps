@@ -17,6 +17,7 @@ import { TalentPoolPage } from '../features/exit/talent-pool';
 import { FindTrainersPage } from '../features/skills/find-trainers';
 import { ClientsPage } from '../features/commercial/clients';
 import { MarginPage } from '../features/commercial/margin';
+import { PayrollRegisterPage } from '../features/payroll/register';
 import { AuditLogPage } from '../features/admin/audit-log';
 import { UsersPage } from '../features/admin/users';
 import { AppShell } from './app-shell';
@@ -116,6 +117,14 @@ export function AppRoutes() {
           element={
             <RequireCapability capability="billing.read">
               <MarginPage />
+            </RequireCapability>
+          }
+        />
+        <Route
+          path="payroll"
+          element={
+            <RequireCapability capability="payroll.read">
+              <PayrollRegisterPage />
             </RequireCapability>
           }
         />

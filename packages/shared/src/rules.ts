@@ -654,3 +654,161 @@ function freesUpOn(commitments: readonly Commitment[]): string | null {
   next.setUTCDate(next.getUTCDate() + 1);
   return next.toISOString().slice(0, 10);
 }
+
+/* ----------------------------------------------------------------- payroll */
+
+/**
+ * What the register is, and what it deliberately is not.
+ *
+ * It is an *input* register: the days and money ManagedOps actually knows
+ * about, in the shape a payroll system wants them. It is not a payroll engine.
+ * Nothing here computes PF, ESI, professional tax or TDS, because those are
+ * statutory, they change, and a wrong number that looks official is worse than
+ * no number at all. Deductions belong to whoever files the returns.
+ */
+
+/** One attendance record, flattened to what payroll cares about. */
+export interface PayrollDayRecord {
+  /** `YYYY-MM-DD`. */
+  workDate: string;
+  status: string;
+}
+
+export interface PayrollDays {
+  /** Distinct dates that were working days at all. */
+  workingDays: number;
+  /** Distinct working dates that earned a day's pay. */
+  payableDays: number;
+  /** Working dates recorded but earning nothing — absence and leave without pay. */
+  lopDays: number;
+  /** Payable dates spent on approved leave rather than delivering. */
+  leaveDays: number;
+}
+
+/**
+ * A month of attendance, resolved per person rather than per assignment.
+ *
+ * Attendance is recorded against an assignment, so somebody split across two
+ * projects has two records for the same Tuesday. They are paid for that Tuesday
+ * once. Every figure here is therefore counted over distinct dates, and a date
+ * resolves to its best outcome: if any assignment records them as working or on
+ * approved leave, the day is payable — they were demonstrably somewhere.
+ */
+export function summarisePayrollDays(records: readonly PayrollDayRecord[]): PayrollDays {
+  const byDate = new Map<string, { working: boolean; payable: boolean; worked: boolean }>();
+
+  for (const record of records) {
+    const value = DAY_VALUE[record.status as AttendanceStatusLike];
+    if (!value) continue;
+
+    const existing = byDate.get(record.workDate) ?? {
+      working: false,
+      payable: false,
+      worked: false,
+    };
+    byDate.set(record.workDate, {
+      working: existing.working || value.working > 0,
+      payable: existing.payable || value.payable > 0,
+      worked: existing.worked || value.billable > 0,
+    });
+  }
+
+  let workingDays = 0;
+  let payableDays = 0;
+  let leaveDays = 0;
+
+  for (const day of byDate.values()) {
+    if (!day.working) continue;
+    workingDays += 1;
+    if (day.payable) {
+      payableDays += 1;
+      // Paid, and nothing delivered anywhere: approved leave.
+      if (!day.worked) leaveDays += 1;
+    }
+  }
+
+  return { workingDays, payableDays, lopDays: workingDays - payableDays, leaveDays };
+}
+
+export interface MonthlyPay {
+  /** A twelfth of the annual salary, before anything is deducted. */
+  monthlyGross: number;
+  /** What the days actually worked and paid come to. */
+  earnedGross: number;
+  /** The difference, which is what unpaid days cost them. */
+  lopDeduction: number;
+}
+
+/**
+ * A month's earnings from the days that earned them.
+ *
+ * Prorated over the month's *calendar* working days, not the days attendance
+ * happened to be written for — otherwise a month with records missing would
+ * quietly raise the value of every recorded day and overpay.
+ */
+export function computeMonthlyPay(input: {
+  salaryAnnual: number | null;
+  payableDays: number;
+  workingDaysInMonth: number;
+}): MonthlyPay {
+  const monthlyGross = input.salaryAnnual == null ? 0 : round2(input.salaryAnnual / 12);
+
+  // No working days in the month means nothing to prorate over and nothing
+  // earned in it either; paying a full month against a zero denominator would
+  // be the one arithmetic mistake nobody would catch until payday.
+  const share =
+    input.workingDaysInMonth > 0
+      ? Math.min(1, Math.max(0, input.payableDays / input.workingDaysInMonth))
+      : 0;
+
+  const earnedGross = round2(monthlyGross * share);
+  return { monthlyGross, earnedGross, lopDeduction: round2(monthlyGross - earnedGross) };
+}
+
+export interface PayrollReadiness {
+  /** Safe to pay from: every day is accounted for and nothing is awaiting a decision. */
+  ready: boolean;
+  /** What is unresolved, in sentences somebody can act on. */
+  blockers: string[];
+}
+
+/**
+ * Whether a row is safe to pay from.
+ *
+ * A register that looks final while a correction is still pending is how
+ * somebody gets underpaid, so unresolved data is stated rather than rounded
+ * past. Every blocker names a number and a thing to go and do.
+ */
+export function payrollReadiness(input: {
+  /** Working days in the month with no attendance recorded at all. */
+  unrecordedDays: number;
+  /** Attendance corrections still awaiting a decision. */
+  pendingCorrections: number;
+  /** Leave requests overlapping the month that nobody has decided. */
+  undecidedLeave: number;
+  /** True when the person has no salary on record, so there is nothing to pay. */
+  salaryMissing: boolean;
+}): PayrollReadiness {
+  const blockers: string[] = [];
+
+  if (input.salaryMissing) {
+    blockers.push('No annual salary on record, so nothing can be worked out.');
+  }
+  if (input.unrecordedDays > 0) {
+    blockers.push(
+      `${input.unrecordedDays} working day${input.unrecordedDays === 1 ? '' : 's'} with no attendance recorded.`,
+    );
+  }
+  if (input.pendingCorrections > 0) {
+    blockers.push(
+      `${input.pendingCorrections} attendance correction${input.pendingCorrections === 1 ? '' : 's'} awaiting a decision.`,
+    );
+  }
+  if (input.undecidedLeave > 0) {
+    blockers.push(
+      `${input.undecidedLeave} leave request${input.undecidedLeave === 1 ? '' : 's'} still undecided.`,
+    );
+  }
+
+  return { ready: blockers.length === 0, blockers };
+}

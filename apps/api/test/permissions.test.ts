@@ -59,6 +59,14 @@ const ROUTES: RouteUnderTest[] = [
     capabilities: ['matching.read'],
   },
 
+  // Payroll
+  { method: 'get', path: '/api/v1/payroll/register', capabilities: ['payroll.read'] },
+  {
+    method: 'get',
+    path: '/api/v1/payroll/register/export.csv',
+    capabilities: ['payroll.read'],
+  },
+
   // Clients and billing
   { method: 'get', path: '/api/v1/clients', capabilities: ['clients.read'] },
   { method: 'get', path: '/api/v1/clients/export.csv', capabilities: ['clients.read'] },

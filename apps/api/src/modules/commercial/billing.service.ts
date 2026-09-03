@@ -1,13 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import {
-  computeMargin,
-  eachDate,
-  isWorkingDay,
-  tallyDays,
-  type Margin,
-  type MarginQuery,
-} from '@managedops/shared';
+import { computeMargin, tallyDays, type Margin, type MarginQuery } from '@managedops/shared';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { WorkingDaysService } from '../../common/working-days.js';
 import { NotFoundProblem } from '../../common/errors.js';
 import { projectScope, scopedWhere } from '../../common/scope.js';
 import type { AuthenticatedUser } from '../../common/decorators/index.js';
@@ -41,7 +35,10 @@ export interface MarginReport {
  */
 @Injectable()
 export class BillingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly workingDays: WorkingDaysService,
+  ) {}
 
   async report(query: MarginQuery, user: AuthenticatedUser): Promise<MarginReport> {
     const { from, to } = resolvePeriod(query);
@@ -102,8 +99,8 @@ export class BillingService {
       },
     });
 
-    const workingDays = await this.workingDaysByProject(
-      [...new Set(assignments.map((row) => row.project.id))],
+    const workingDays = await this.workingDays.forProjects(
+      assignments.map((row) => row.project.id),
       from,
       to,
     );
@@ -151,55 +148,6 @@ export class BillingService {
 
     const report = await this.report({ ...query, projectId, groupBy: 'trainer' }, user);
     return { project, ...report };
-  }
-
-  /**
-   * Working days in the period, per project.
-   *
-   * Derived from the project's own calendar rather than counted off its
-   * attendance records: a project with nobody assigned yet still has a month of
-   * working days, and using the records would make the denominator depend on
-   * how much attendance happened to be written.
-   */
-  private async workingDaysByProject(
-    projectIds: string[],
-    from: string,
-    to: string,
-  ): Promise<Map<string, number>> {
-    if (projectIds.length === 0) return new Map();
-
-    const [projects, holidays] = await Promise.all([
-      this.prisma.db.project.findMany({
-        where: { id: { in: projectIds } },
-        select: { id: true, weeklyOffDays: true },
-      }),
-      this.prisma.db.holiday.findMany({
-        where: {
-          date: {
-            gte: new Date(`${from}T00:00:00.000Z`),
-            lte: new Date(`${to}T00:00:00.000Z`),
-          },
-          OR: [{ projectId: null }, { projectId: { in: projectIds } }],
-        },
-        select: { projectId: true, date: true },
-      }),
-    ]);
-
-    const days = [...eachDate(from, to)];
-    const result = new Map<string, number>();
-
-    for (const project of projects) {
-      const applicable = holidays
-        .filter((holiday) => holiday.projectId === null || holiday.projectId === project.id)
-        .map((holiday) => holiday.date.toISOString().slice(0, 10));
-
-      const count = days.filter((day) =>
-        isWorkingDay(day, { weeklyOffDays: project.weeklyOffDays, holidays: applicable }),
-      ).length;
-      result.set(project.id, count);
-    }
-
-    return result;
   }
 
   private bucketFor(

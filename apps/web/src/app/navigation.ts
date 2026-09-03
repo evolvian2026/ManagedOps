@@ -29,6 +29,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Find Trainers', path: '/find-trainers', capability: 'matching.read', section: 'work' },
   { label: 'Clients', path: '/clients', capability: 'clients.read', section: 'work' },
   { label: 'Margin', path: '/margin', capability: 'billing.read', section: 'work' },
+  { label: 'Payroll', path: '/payroll', capability: 'payroll.read', section: 'work' },
 
   // Trainer self-service.
   {

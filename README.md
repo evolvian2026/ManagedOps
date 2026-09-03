@@ -234,6 +234,56 @@ project standing in the way rather than a constraint violation.
 
 ---
 
+## The payroll register
+
+An **input** register, not a payroll engine. It states the days and money
+ManagedOps actually knows about, in the shape a payroll system wants them.
+Nothing here computes PF, ESI, professional tax or TDS: those are statutory,
+they change, and a wrong number that looks official is worse than no number.
+Deductions belong to whoever files the returns.
+
+Per person per month:
+
+```
+earned gross = (annual salary / 12) x (payable days / working days in the month)
+```
+
+**Payable days are counted per person, not per assignment.** Attendance is
+recorded against an assignment, so somebody split across two projects has two
+records for the same Tuesday — and is paid for that Tuesday once. A date
+resolves to its best outcome: if any assignment records them as working or on
+approved leave, the day is payable.
+
+Alongside the salary, and separate from it: reimbursements approved during the
+month, and a final settlement if one fell in it. Weekly offs and holidays are
+on neither side of the ratio — nobody is docked for a Sunday, and nobody earns
+a working day's pay for one either.
+
+### It refuses to look final
+
+Every row carries a readiness verdict, because a register that reads as settled
+while a correction is pending is one somebody pays from. A row is blocked when:
+
+- a working day has no attendance recorded — indistinguishable from an absence
+  until somebody says which it was;
+- an attendance correction is still awaiting a decision;
+- leave overlapping the month is undecided;
+- there is no salary on record to work from.
+
+The figures are still shown, and the reasons travel into the CSV rather than
+being lost when the file leaves. The register opens on the month that has
+_finished_: defaulting to the one in progress would block every row for reasons
+nobody can act on yet.
+
+Figures are computed live rather than snapshotted, so a register run twice can
+differ if somebody approved something in between. That is the honest behaviour,
+and it is why the response carries the time it was generated.
+
+`payroll.read` is held by Super Admin, Manager and HR. Not a project lead and
+not a trainer: the register carries every salary on it.
+
+---
+
 ## Errors
 
 Every failure is an RFC 9457 Problem Details document with a stable `type` and a

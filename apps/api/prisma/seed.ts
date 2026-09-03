@@ -761,6 +761,7 @@ async function main(): Promise<void> {
   const leadAssignment = assignments.find((row) => row.role === 'lead');
   const sneha = trainers.find((trainer) => trainer.name === 'Sneha Iyer');
   const arjun = trainers.find((trainer) => trainer.name === 'Arjun Desai');
+  const meera = trainers.find((trainer) => trainer.name === 'Meera Krishnan');
   const snehaAssignment = sneha ? byTrainer.get(sneha.trainerId) : undefined;
   const arjunAssignment = arjun ? byTrainer.get(arjun.trainerId) : undefined;
 
@@ -814,6 +815,61 @@ async function main(): Promise<void> {
         },
       });
       if (leftOpen) openDayRecordId = record.id;
+    }
+  }
+
+  // A complete previous calendar month, which is the month payroll is run for.
+  //
+  // The recent fortnight above is what the operational screens show; this is
+  // what the payroll register needs, and it needs *every* working day, because
+  // a day nobody recorded is indistinguishable from an absence and the register
+  // rightly refuses to look final while any are missing.
+  const payrollMonthStart = new Date(Date.UTC(TODAY.getUTCFullYear(), TODAY.getUTCMonth() - 1, 1));
+  const payrollMonthEnd = new Date(Date.UTC(TODAY.getUTCFullYear(), TODAY.getUTCMonth(), 0));
+
+  for (const assignment of assignments) {
+    // Named rather than positional: `assignments` comes back in whatever order
+    // the database chose, so an index would move the unpaid days to a different
+    // person between runs and every assertion about them would be luck.
+    const isArjun = assignment.trainerId === arjun?.trainerId;
+    const isMeera = assignment.trainerId === meera?.trainerId;
+    let workingDayNumber = 0;
+
+    for (
+      let day = new Date(payrollMonthStart);
+      day <= payrollMonthEnd;
+      day = new Date(day.getTime() + 86_400_000)
+    ) {
+      if (day.getUTCDay() === 0) continue; // Sunday is the weekly off.
+      workingDayNumber += 1;
+
+      const workDate = dateOnly(day);
+      const existing = await prisma.attendanceRecord.findUnique({
+        where: { assignmentId_workDate: { assignmentId: assignment.id, workDate } },
+      });
+      if (existing) continue;
+
+      // Variety the register has to handle: one trainer took two unpaid days,
+      // another two days of approved leave. Without them every row reads the
+      // same and the arithmetic looks right whatever it does.
+      //
+      // Counted in working days, not dates: a fixed date lands on a Sunday in
+      // roughly one month in six and the absence silently disappears.
+      const unpaid = isArjun && (workingDayNumber === 6 || workingDayNumber === 7);
+      const onLeave = isMeera && (workingDayNumber === 12 || workingDayNumber === 13);
+
+      await prisma.attendanceRecord.create({
+        data: {
+          id: uuidv7(),
+          assignmentId: assignment.id,
+          workDate,
+          punchInAt: unpaid || onLeave ? null : at(day, 8, 55),
+          punchOutAt: unpaid || onLeave ? null : at(day, 17, 30),
+          status: unpaid ? 'absent' : onLeave ? 'on_leave' : 'present',
+          locationStatus: unpaid || onLeave ? 'unavailable' : 'captured',
+          source: unpaid || onLeave ? 'system' : 'self',
+        },
+      });
     }
   }
 
