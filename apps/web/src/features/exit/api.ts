@@ -31,7 +31,7 @@ export interface DeboardingRow {
     startDate: string;
     endDate: string | null;
     status: string;
-    project: { id: string; name: string; clientName: string };
+    project: { id: string; name: string; client: { id: string; name: string } };
     trainer: {
       id: string;
       employeeCode: string;

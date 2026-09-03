@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
+  can,
   toIstDateString,
   type AssignmentQuery,
   type CreateAssignmentInput,
+  type SetBillRateInput,
 } from '@managedops/shared';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { newId } from '../../common/ids.js';
@@ -23,7 +25,14 @@ const ASSIGNMENT_SELECT = {
   endDate: true,
   leaveAllowanceDays: true,
   createdAt: true,
-  project: { select: { id: true, name: true, code: true, clientName: true } },
+  project: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      client: { select: { id: true, name: true } },
+    },
+  },
   trainer: {
     select: {
       id: true,
@@ -35,6 +44,19 @@ const ASSIGNMENT_SELECT = {
     },
   },
 } as const;
+
+/**
+ * What a client pays is not part of an assignment for every reader of one.
+ *
+ * A trainer and a project lead both legitimately list assignments; neither has
+ * any business seeing the day rate on them. Adding the field per-caller rather
+ * than stripping it later means a new endpoint cannot leak it by forgetting to.
+ */
+function assignmentSelect(user: AuthenticatedUser) {
+  return can(user.role, 'billing.read')
+    ? { ...ASSIGNMENT_SELECT, billRatePerDay: true }
+    : ASSIGNMENT_SELECT;
+}
 
 @Injectable()
 export class AssignmentsService {
@@ -53,7 +75,7 @@ export class AssignmentsService {
 
     const page = toPrismaPage(query, SORTABLE, { startDate: 'desc' });
     const [rows, total] = await Promise.all([
-      this.prisma.db.assignment.findMany({ where, ...page, select: ASSIGNMENT_SELECT }),
+      this.prisma.db.assignment.findMany({ where, ...page, select: assignmentSelect(user) }),
       this.prisma.db.assignment.count({ where }),
     ]);
 
@@ -83,7 +105,12 @@ export class AssignmentsService {
 
     const project = await this.prisma.db.project.findFirst({
       where: scopedWhere(projectScope(actor), { id: input.projectId }),
-      select: { id: true, name: true, status: true },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        client: { select: { defaultDayRate: true } },
+      },
     });
     if (!project) throw new NotFoundProblem('That project');
 
@@ -114,10 +141,15 @@ export class AssignmentsService {
         startDate: new Date(input.startDate),
         endDate: input.endDate ? new Date(input.endDate) : null,
         leaveAllowanceDays: new Prisma.Decimal(input.leaveAllowanceDays),
+        // Inherited from the contract, not asked for here. HR staffs projects
+        // and does not hold `billing.manage`, so making them type a rate would
+        // either block the assignment or invite a guess; the client's agreed
+        // rate is the right default and a Manager can override it after.
+        billRatePerDay: project.client.defaultDayRate,
         status: 'active',
         createdById: actor.userId,
       },
-      select: ASSIGNMENT_SELECT,
+      select: assignmentSelect(actor),
     });
 
     // Having somewhere to work is half of what makes a trainer active.
@@ -144,7 +176,7 @@ export class AssignmentsService {
     return this.prisma.db.assignment.update({
       where: { id: assignmentId },
       data: { status: 'ended', endDate: new Date(endDate), updatedById: actor.userId },
-      select: ASSIGNMENT_SELECT,
+      select: assignmentSelect(actor),
     });
   }
 
@@ -160,7 +192,7 @@ export class AssignmentsService {
         id: true,
         name: true,
         code: true,
-        clientName: true,
+        client: { select: { id: true, name: true } },
         status: true,
         startDate: true,
         endDate: true,
@@ -176,7 +208,7 @@ export class AssignmentsService {
     const assignments = await this.prisma.db.assignment.findMany({
       where: scopedWhere(assignmentScope(user), { projectId, status: 'active' as const }),
       select: {
-        ...ASSIGNMENT_SELECT,
+        ...assignmentSelect(user),
         attendance: {
           where: { workDate },
           select: { status: true, punchInAt: true, punchOutAt: true },
@@ -193,5 +225,27 @@ export class AssignmentsService {
         today: attendance[0] ?? null,
       })),
     };
+  }
+
+  /**
+   * Sets what the client pays for this trainer's days.
+   *
+   * Separate from `end` and from creation because it is a different decision by
+   * a different person: staffing is HR's, pricing is the Manager's. Null is a
+   * real answer — "this work is not billed" — and the audit trail is what
+   * distinguishes it from a rate nobody has got round to agreeing.
+   */
+  async setBillRate(assignmentId: string, input: SetBillRateInput, actor: AuthenticatedUser) {
+    const assignment = await this.prisma.db.assignment.findFirst({
+      where: scopedWhere(assignmentScope(actor, 'billing.manage'), { id: assignmentId }),
+      select: { id: true },
+    });
+    if (!assignment) throw new NotFoundProblem('That assignment');
+
+    return this.prisma.db.assignment.update({
+      where: { id: assignmentId },
+      data: { billRatePerDay: input.billRatePerDay, updatedById: actor.userId },
+      select: assignmentSelect(actor),
+    });
   }
 }

@@ -74,7 +74,7 @@ async function buildTwoProjects(leadAUserId: string, leadBUserId: string): Promi
       .send({
         name: `Project ${code}`,
         code,
-        clientName: 'Client',
+        clientId: (await harness.seedClient()).id,
         startDate: futureDate(7),
         managerId: managerUser!.id,
         hrId: hrUser!.id,
@@ -305,7 +305,7 @@ describe('a project lead sees only their own project', () => {
       .send({
         name: 'Not Allowed',
         code: 'NOPE-1',
-        clientName: 'Client',
+        clientId: (await harness.seedClient()).id,
         startDate: futureDate(7),
         managerId: manager.user.id,
         hrId: hr.user.id,

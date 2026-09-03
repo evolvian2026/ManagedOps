@@ -80,7 +80,7 @@ beforeEach(async () => {
       id: newId(),
       name: 'File Access Project',
       code: `FA-${Math.floor(Math.random() * 1_000_000)}`,
-      clientName: 'Client',
+      clientId: (await harness.seedClient()).id,
       startDate: new Date('2026-01-01T00:00:00Z'),
       status: 'active',
       managerId: managerUser.id,

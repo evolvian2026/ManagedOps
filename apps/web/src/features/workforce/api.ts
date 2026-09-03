@@ -15,7 +15,7 @@ export interface ProjectRow {
   id: string;
   name: string;
   code: string;
-  clientName: string;
+  client: { id: string; name: string; code: string };
   location: string | null;
   startDate: string;
   endDate: string | null;
@@ -33,7 +33,13 @@ export interface RosterRow {
   startDate: string;
   endDate: string | null;
   leaveAllowanceDays: string;
-  project: { id: string; name: string; code: string; clientName: string };
+  /**
+   * Present only for a caller holding `billing.read` — the API omits the field
+   * rather than nulling it, so `undefined` means "not yours to see" while null
+   * means "no rate agreed".
+   */
+  billRatePerDay?: string | null;
+  project: { id: string; name: string; code: string; client: { id: string; name: string } };
   trainer: {
     id: string;
     employeeCode: string;
@@ -90,7 +96,7 @@ export interface TrainerDetail {
     startDate: string;
     endDate: string | null;
     leaveAllowanceDays: string;
-    project: { id: string; name: string; code: string; clientName: string };
+    project: { id: string; name: string; code: string; client: { id: string; name: string } };
   }[];
   documents: TrainerDocumentRow[];
 }

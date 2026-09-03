@@ -23,6 +23,12 @@ export interface CsvColumn<T> {
 export function toCsvField(value: unknown): string {
   if (value === null || value === undefined) return '';
 
+  // A number is never a formula, and quoting one costs real meaning: a negative
+  // margin written as '-4800 arrives in the spreadsheet as text, so the column
+  // it belongs to stops adding up. The guard below is for text the user
+  // supplied, which is the only place the risk actually lives.
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+
   const text =
     value instanceof Date
       ? value.toISOString()

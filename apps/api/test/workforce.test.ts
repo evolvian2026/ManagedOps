@@ -52,7 +52,7 @@ async function acceptedOffer(): Promise<{ offerId: string; projectId: string; em
     .send({
       name: 'Onboarding Demo',
       code: `OB-${Math.floor(Math.random() * 1_000_000)}`,
-      clientName: 'Client',
+      clientId: (await harness.seedClient()).id,
       startDate: futureDate(3),
       managerId: managerUser!.id,
       hrId: hrUser!.id,

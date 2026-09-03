@@ -73,7 +73,7 @@ async function buildProject() {
       id: newId(),
       name: 'Operations Test Project',
       code: `OPS-${Math.floor(Math.random() * 1_000_000)}`,
-      clientName: 'Client',
+      clientId: (await harness.seedClient()).id,
       startDate: new Date(`${dayOffset(-30)}T00:00:00Z`),
       status: 'active',
       managerId: managerUser!.id,

@@ -115,7 +115,14 @@ export class TrainersService {
             startDate: true,
             endDate: true,
             leaveAllowanceDays: true,
-            project: { select: { id: true, name: true, code: true, clientName: true } },
+            project: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                client: { select: { id: true, name: true } },
+              },
+            },
           },
           orderBy: { startDate: 'desc' },
         },

@@ -37,7 +37,7 @@ export interface PositionRow {
   filledCount: number;
   description: string | null;
   status: 'open' | 'filled' | 'closed';
-  project: { id: string; name: string; code: string; clientName: string };
+  project: { id: string; name: string; code: string; client: { id: string; name: string } };
   applicants: StageCounts;
 }
 

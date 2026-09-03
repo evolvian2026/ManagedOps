@@ -52,7 +52,7 @@ export function MyProfilePage() {
                     <li key={assignment.id} className="text-sm">
                       <span className="font-medium text-ink">{assignment.project.name}</span>
                       <span className="block text-xs text-ink-soft">
-                        {assignment.project.clientName} · since {formatDate(assignment.startDate)}
+                        {assignment.project.client.name} · since {formatDate(assignment.startDate)}
                       </span>
                     </li>
                   ))}

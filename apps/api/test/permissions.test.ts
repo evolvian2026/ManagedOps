@@ -49,6 +49,13 @@ const ROUTES: RouteUnderTest[] = [
   { method: 'get', path: '/api/v1/audit-logs', capabilities: ['audit.read'] },
   { method: 'get', path: '/api/v1/audit-logs/export.csv', capabilities: ['audit.read'] },
 
+  // Clients and billing
+  { method: 'get', path: '/api/v1/clients', capabilities: ['clients.read'] },
+  { method: 'get', path: '/api/v1/clients/export.csv', capabilities: ['clients.read'] },
+  { method: 'post', path: '/api/v1/clients', capabilities: ['clients.manage'], body: {} },
+  { method: 'get', path: '/api/v1/billing/margin', capabilities: ['billing.read'] },
+  { method: 'get', path: '/api/v1/billing/margin/export.csv', capabilities: ['billing.read'] },
+
   // Projects and positions
   { method: 'get', path: '/api/v1/projects', capabilities: ['projects.read'] },
   { method: 'post', path: '/api/v1/projects', capabilities: ['projects.manage'], body: {} },

@@ -21,6 +21,10 @@ export const GLOBAL_ADMIN_ROLES: readonly Role[] = ['super_admin', 'manager', 'h
 export const USER_STATUSES = ['active', 'disabled'] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
 
+/** A client is either somebody we currently work for or somebody we do not. */
+export const CLIENT_STATUSES = ['active', 'inactive'] as const;
+export type ClientStatus = (typeof CLIENT_STATUSES)[number];
+
 export const PROJECT_STATUSES = ['planned', 'active', 'completed', 'cancelled'] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 

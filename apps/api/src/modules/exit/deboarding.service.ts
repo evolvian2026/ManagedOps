@@ -45,7 +45,7 @@ const DEBOARDING_SELECT = {
       startDate: true,
       endDate: true,
       status: true,
-      project: { select: { id: true, name: true, clientName: true } },
+      project: { select: { id: true, name: true, client: { select: { id: true, name: true } } } },
       trainer: {
         select: {
           id: true,

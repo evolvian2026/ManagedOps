@@ -67,7 +67,7 @@ async function buildProject() {
       id: newId(),
       name: 'Exit Test Project',
       code: `EX-${Math.floor(Math.random() * 1_000_000)}`,
-      clientName: 'Client',
+      clientId: (await harness.seedClient()).id,
       startDate: new Date(`${dayOffset(-60)}T00:00:00Z`),
       status: 'active',
       managerId: managerUser!.id,
@@ -764,6 +764,23 @@ describe('CSV export', () => {
     expect(toCsvField('+1234')).toBe("'+1234");
     expect(toCsvField('-1234')).toBe("'-1234");
     expect(toCsvField('@import')).toBe("'@import");
+  });
+
+  it('leaves an actual number alone, so a negative one still adds up', () => {
+    // The guard above is for text. Applying it to a number would write a loss
+    // as '-4800, which arrives in the spreadsheet as a string — and a margin
+    // column of strings silently stops totalling.
+    expect(toCsvField(-4800)).toBe('-4800');
+    expect(toCsvField(0)).toBe('0');
+    expect(toCsvField(6153.85)).toBe('6153.85');
+    // A numeric *string* is still text and still guarded, because that is what
+    // a user-entered field arrives as.
+    expect(toCsvField('-4800')).toBe("'-4800");
+  });
+
+  it('writes nothing for a number that is not one', () => {
+    expect(toCsvField(Number.NaN)).toBe('');
+    expect(toCsvField(Number.POSITIVE_INFINITY)).toBe('');
   });
 
   it('renders a header row and one line per record', () => {

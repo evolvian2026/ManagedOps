@@ -181,3 +181,177 @@ export const REIMBURSEMENT_HR_LIMIT = 10_000;
 export function needsHighValueApproval(amount: number): boolean {
   return amount > REIMBURSEMENT_HR_LIMIT;
 }
+
+/* ------------------------------------------------------------- commercials */
+
+/** Kept structural so this file does not depend on the Prisma enum's identity. */
+type AttendanceStatusLike =
+  | 'present'
+  | 'late'
+  | 'corrected'
+  | 'missing_punch_out'
+  | 'correction_pending'
+  | 'half_day'
+  | 'on_leave'
+  | 'holiday'
+  | 'weekly_off'
+  | 'absent'
+  | 'leave_without_pay';
+
+interface DayValue {
+  /** Does the client pay for it? Only days actually delivered. */
+  billable: number;
+  /** Does the trainer earn a working day's pay for it? */
+  payable: number;
+  /** Is it a working day at all — that is, part of the denominator? */
+  working: number;
+}
+
+/**
+ * How a day's attendance status turns into money.
+ *
+ * Three questions get asked of every recorded day and they have three different
+ * answers, which is why this is a table rather than a pair of booleans.
+ *
+ * The one that is easy to get wrong is `working`. A weekly off or a holiday is
+ * not an unpaid day — nobody is docked for a Sunday — but neither is it a day
+ * of pay earned. It sits outside the working calendar altogether, which is
+ * exactly how it has to be treated for a salary to prorate correctly: a month's
+ * pay is spread over its *working* days, so counting Sundays into either side
+ * of that ratio would quietly understate the cost of every day taught.
+ *
+ * `half_day` is written only when half a day of *paid* leave is approved, so
+ * the trainer delivered half a day and earned a full one. Leave beyond the
+ * allowance becomes `leave_without_pay`, which earns nothing.
+ *
+ * `missing_punch_out` and `correction_pending` are billable because the trainer
+ * was demonstrably there. Somebody still has to decide what time they left, but
+ * not whether they came.
+ */
+const DAY_VALUE: Record<AttendanceStatusLike, DayValue> = {
+  present: { billable: 1, payable: 1, working: 1 },
+  late: { billable: 1, payable: 1, working: 1 },
+  corrected: { billable: 1, payable: 1, working: 1 },
+  missing_punch_out: { billable: 1, payable: 1, working: 1 },
+  correction_pending: { billable: 1, payable: 1, working: 1 },
+  half_day: { billable: 0.5, payable: 1, working: 1 },
+  on_leave: { billable: 0, payable: 1, working: 1 },
+  absent: { billable: 0, payable: 0, working: 1 },
+  leave_without_pay: { billable: 0, payable: 0, working: 1 },
+  holiday: { billable: 0, payable: 0, working: 0 },
+  weekly_off: { billable: 0, payable: 0, working: 0 },
+};
+
+export interface DayTally {
+  /** Days the client is charged for. */
+  billableDays: number;
+  /** Working days the trainer earned pay for. */
+  payableDays: number;
+  /** Working days covered by these records, ignoring weekly offs and holidays. */
+  workingDays: number;
+}
+
+/** Adds up what a set of attendance days is worth on each side of the ledger. */
+export function tallyDays(statuses: readonly string[]): DayTally {
+  let billableDays = 0;
+  let payableDays = 0;
+  let workingDays = 0;
+
+  for (const status of statuses) {
+    const value = DAY_VALUE[status as AttendanceStatusLike];
+    // An unrecognised status is not silently treated as free labour: it counts
+    // as nothing anywhere, and the totals visibly fail to add up.
+    if (!value) continue;
+    billableDays += value.billable;
+    payableDays += value.payable;
+    workingDays += value.working;
+  }
+
+  return {
+    billableDays: round2(billableDays),
+    payableDays: round2(payableDays),
+    workingDays: round2(workingDays),
+  };
+}
+
+export interface MarginInput {
+  /** Days delivered, from `tallyDays`. */
+  billableDays: number;
+  /** INR per delivered day. Null when the work is not billed at all. */
+  dayRate: number | null;
+  /** The trainer's annual salary in INR, or null when it is not recorded. */
+  salaryAnnual: number | null;
+  /** Working days this assignment earned pay for, from `tallyDays`. */
+  payableDays: number;
+  /**
+   * Working days the whole period contains for this project.
+   *
+   * The denominator is the period, never the assignment. An assignment that
+   * began halfway through the month has half the payable days and must
+   * therefore carry half the month's salary — measuring it against its own
+   * length would charge every partial assignment a full month.
+   */
+  workingDaysInPeriod: number;
+  /** Calendar months the period spans; 1 for a single month. */
+  months?: number;
+  /** Reimbursements approved in the period, in INR. */
+  reimbursements?: number;
+}
+
+export interface Margin {
+  revenue: number;
+  salaryCost: number;
+  reimbursements: number;
+  cost: number;
+  margin: number;
+  /** Margin as a percentage of revenue, or null when there was no revenue. */
+  marginPercent: number | null;
+  /** No rate agreed, so a zero margin means "not sold", not "sold at cost". */
+  unbilled: boolean;
+}
+
+/**
+ * What a period of delivery earned and what it cost.
+ *
+ * Revenue is per delivered day; cost is a monthly salary spread across the
+ * period's working days and drawn down by the days this assignment actually
+ * earned. That asymmetry is the real one — a client pays for days taught, while
+ * a salaried trainer is paid through approved leave — and it is precisely why
+ * margin cannot be read off a day rate alone.
+ *
+ * An assignment with no rate is reported as `unbilled` rather than as a total
+ * loss. Booking internal work at a 100% loss would make every roll-up above it
+ * meaningless.
+ */
+export function computeMargin(input: MarginInput): Margin {
+  const months = input.months ?? 1;
+  const reimbursements = input.reimbursements ?? 0;
+
+  const revenue = input.dayRate == null ? 0 : round2(input.billableDays * input.dayRate);
+
+  const monthlySalary = input.salaryAnnual == null ? 0 : input.salaryAnnual / 12;
+  const periodSalary = monthlySalary * months;
+  // A period with no working days in it has nothing to spread a salary over,
+  // and nothing was earned in it either — so the cost is zero rather than NaN.
+  const earnedShare =
+    input.workingDaysInPeriod > 0 ? Math.min(1, input.payableDays / input.workingDaysInPeriod) : 0;
+  const salaryCost = round2(Math.max(0, periodSalary * earnedShare));
+
+  const cost = round2(salaryCost + reimbursements);
+  const margin = round2(revenue - cost);
+
+  return {
+    revenue,
+    salaryCost,
+    reimbursements: round2(reimbursements),
+    cost,
+    margin,
+    marginPercent: revenue > 0 ? round2((margin / revenue) * 100) : null,
+    unbilled: input.dayRate == null,
+  };
+}
+
+/** Money is summed and compared, so it is rounded here rather than at each display. */
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}

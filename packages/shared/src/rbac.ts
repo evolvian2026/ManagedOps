@@ -13,6 +13,10 @@ export const CAPABILITIES = [
   'settings.read',
   'settings.manage',
   'audit.read',
+  'clients.read',
+  'clients.manage',
+  'billing.read',
+  'billing.manage',
   'projects.read',
   'projects.manage',
   'positions.read',
@@ -105,6 +109,15 @@ const MANAGER: Grant = {
   ...grantAll(
     'settings.read',
     'audit.read',
+    // Commerce is Manager and Super Admin only. HR reads the client
+    // directory because they staff against it, but rates and margin are
+    // not theirs. A Finance role, if one is ever added, would take
+    // `billing.read` without `clients.manage` — which is why these are
+    // four capabilities and not one.
+    'clients.read',
+    'clients.manage',
+    'billing.read',
+    'billing.manage',
     'projects.read',
     'projects.manage',
     'positions.read',
@@ -148,6 +161,8 @@ const MANAGER: Grant = {
 
 const HR: Grant = grantAll(
   'settings.read',
+  // The directory, so they can staff against it. Not the rates on it.
+  'clients.read',
   'audit.read',
   'projects.read',
   'positions.read',

@@ -72,7 +72,7 @@ function PositionCard({ position, onOpen }: { position: PositionRow; onOpen: () 
           {/* Project and client each get their own line: run together they
               truncate into an ellipsis that hides which client it is for. */}
           <p className="mt-0.5 truncate text-sm text-ink-soft">{position.project.name}</p>
-          <p className="truncate text-xs text-ink-faint">{position.project.clientName}</p>
+          <p className="truncate text-xs text-ink-faint">{position.project.client.name}</p>
         </div>
         <Badge tone={STATUS_TONE[position.status] ?? 'neutral'}>{humanise(position.status)}</Badge>
       </div>
@@ -151,7 +151,7 @@ function ApplicationsForPosition({
           </Button>
           <h2 className="text-lg font-semibold text-ink">{position.title}</h2>
           <p className="text-sm text-ink-soft">
-            {position.project.name} · {position.project.clientName} · {position.filledCount} of{' '}
+            {position.project.name} · {position.project.client.name} · {position.filledCount} of{' '}
             {position.headcount} filled
           </p>
         </div>

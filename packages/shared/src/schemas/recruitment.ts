@@ -28,7 +28,7 @@ export const createProjectSchema = z
       .trim()
       .toUpperCase()
       .regex(/^[A-Z0-9-]{3,32}$/, 'Use letters, numbers and hyphens, 3 to 32 characters'),
-    clientName: z.string().trim().min(2, 'Name the client').max(160),
+    clientId: uuidSchema,
     location: z.string().trim().max(160).optional(),
     startDate: dateStringSchema,
     endDate: dateStringSchema.optional(),

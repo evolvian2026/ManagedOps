@@ -36,6 +36,11 @@ enum UserStatus {
   disabled
 }
 
+enum ClientStatus {
+  active
+  inactive
+}
+
 enum ProjectStatus {
   planned
   active
@@ -425,11 +430,50 @@ model FileObject {
 
 // ---------------------------------------------------------------- projects
 
+/// ------------------------------------------------------------------ clients
+///
+/// The organisation a project is delivered for, and the commercial terms it is
+/// delivered under. Before this existed a project carried its client as a bare
+/// string, which meant the same client spelled two ways was two clients and
+/// there was nowhere to put a rate.
+model Client {
+  id     String       @id
+  name   String
+  code   String       @unique
+  status ClientStatus @default(active)
+
+  contactName    String?
+  contactEmail   String?
+  contactPhone   String?
+  billingAddress String?
+  /// India-only operation, so the tax identifier is a GSTIN.
+  gstin          String?
+
+  /// The contract rate, in INR. It prefills a new assignment and nothing more:
+  /// what a client is actually billed is the rate on the assignment, so
+  /// renegotiating a contract never silently reprices work already delivered.
+  defaultDayRate Decimal? @db.Decimal(10, 2)
+  notes          String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  deletedById String?
+
+  projects Project[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("clients")
+}
+
 model Project {
   id            String        @id
   name          String
   code          String        @unique
-  clientName    String
+  clientId      String
   location      String?
   startDate     DateTime      @db.Date
   endDate       DateTime?     @db.Date
@@ -453,6 +497,7 @@ model Project {
   deletedAt   DateTime?
   deletedById String?
 
+  client      Client       @relation(fields: [clientId], references: [id])
   manager     User         @relation("ProjectManager", fields: [managerId], references: [id])
   hr          User         @relation("ProjectHr", fields: [hrId], references: [id])
   leadTrainer User?        @relation("ProjectLead", fields: [leadTrainerId], references: [id])
@@ -461,6 +506,7 @@ model Project {
   holidays    Holiday[]
 
   @@index([status, startDate])
+  @@index([clientId])
   @@index([managerId])
   @@index([hrId])
   @@index([deletedAt])
@@ -730,6 +776,16 @@ model Assignment {
   status    AssignmentStatus @default(active)
   /// Per assignment, never carried over (spec assumption A5).
   leaveAllowanceDays Decimal @default(3) @db.Decimal(4, 1)
+
+  /// What the client pays per day this trainer delivers, in INR.
+  ///
+  /// It lives on the assignment rather than the trainer or the project because
+  /// that is the granularity a rate is actually agreed at: the same trainer can
+  /// be worth a different rate to two clients, and two trainers on one project
+  /// rarely bill the same. Null means the work is not billed — an internal
+  /// project, or a rate nobody has agreed yet — which is why revenue is absent
+  /// rather than zero for those.
+  billRatePerDay Decimal? @db.Decimal(10, 2)
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

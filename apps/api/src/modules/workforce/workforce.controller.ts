@@ -15,6 +15,7 @@ import {
   convertOfferSchema,
   createAssignmentSchema,
   endAssignmentSchema,
+  setBillRateSchema,
   trainerQuerySchema,
   updateTrainerSchema,
   uploadDocumentSchema,
@@ -23,6 +24,7 @@ import {
   type AssignmentQuery,
   type ConvertOfferInput,
   type CreateAssignmentInput,
+  type SetBillRateInput,
   type TrainerQuery,
   type UpdateTrainerInput,
   type UploadDocumentInput,
@@ -166,6 +168,17 @@ export class AssignmentsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.assignments.list(query, user);
+  }
+
+  @Patch(':id/bill-rate')
+  @RequireCapability('billing.manage')
+  @ApiOperation({ summary: 'Set what the client pays per day for this assignment' })
+  setBillRate(
+    @Param('id', validate(uuidSchema)) id: string,
+    @Body(validate(setBillRateSchema)) body: SetBillRateInput,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.assignments.setBillRate(id, body, user);
   }
 
   @Post(':id/end')

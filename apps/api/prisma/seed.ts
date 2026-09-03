@@ -118,10 +118,17 @@ async function main(): Promise<void> {
 
   // ---------------------------------------------------------------- trainers
   const trainerSeeds = [
-    { name: 'Karan Mehta', email: 'karan.mehta@managedops.local', lead: true },
-    { name: 'Sneha Iyer', email: 'sneha.iyer@managedops.local', lead: false },
-    { name: 'Arjun Desai', email: 'arjun.desai@managedops.local', lead: false },
-    { name: 'Meera Krishnan', email: 'meera.krishnan@managedops.local', lead: false },
+    { name: 'Karan Mehta', email: 'karan.mehta@managedops.local', lead: true, unbilled: false },
+    { name: 'Sneha Iyer', email: 'sneha.iyer@managedops.local', lead: false, unbilled: false },
+    { name: 'Arjun Desai', email: 'arjun.desai@managedops.local', lead: false, unbilled: false },
+    // Not billed to the client: internal curriculum work, which is what gives
+    // the margin report an "unbilled" row rather than a uniform one.
+    {
+      name: 'Meera Krishnan',
+      email: 'meera.krishnan@managedops.local',
+      lead: false,
+      unbilled: true,
+    },
   ];
 
   const trainers: {
@@ -130,6 +137,7 @@ async function main(): Promise<void> {
     name: string;
     email: string;
     lead: boolean;
+    unbilled: boolean;
   }[] = [];
   let employeeSequence = 1;
 
@@ -176,11 +184,51 @@ async function main(): Promise<void> {
       name: seed.name,
       email: seed.email,
       lead: seed.lead,
+      unbilled: seed.unbilled,
     });
     employeeSequence += 1;
   }
 
   const leadTrainer = trainers.find((trainer) => trainer.lead);
+
+  // ----------------------------------------------------------------- clients
+  // Two clients on different terms, so the margin report has something to
+  // compare: one is billed comfortably above cost, the other close to it.
+  const horizon = await prisma.client.upsert({
+    where: { code: 'HORIZON' },
+    update: {},
+    create: {
+      id: uuidv7(),
+      name: 'Horizon Institute of Technology',
+      code: 'HORIZON',
+      status: 'active',
+      contactName: 'Sunita Deshpande',
+      contactEmail: 'sunita.deshpande@horizon.example',
+      contactPhone: '+919812345601',
+      billingAddress: 'Baner Road, Pune 411045',
+      gstin: '27AABCH1234M1Z5',
+      defaultDayRate: 6500,
+      createdById: users.superAdmin!.id,
+    },
+  });
+
+  const meridian = await prisma.client.upsert({
+    where: { code: 'MERIDIAN' },
+    update: {},
+    create: {
+      id: uuidv7(),
+      name: 'Meridian Business School',
+      code: 'MERIDIAN',
+      status: 'active',
+      contactName: 'Rakesh Menon',
+      contactEmail: 'rakesh.menon@meridian.example',
+      contactPhone: '+919812345602',
+      billingAddress: 'Koramangala, Bengaluru 560034',
+      gstin: '29AABCM5678N1Z3',
+      defaultDayRate: 3200,
+      createdById: users.superAdmin!.id,
+    },
+  });
 
   // ---------------------------------------------------------------- projects
   const project = await prisma.project.upsert({
@@ -190,7 +238,7 @@ async function main(): Promise<void> {
       id: uuidv7(),
       name: 'Full Stack Bootcamp — Spring Term',
       code: 'MO-DEMO-01',
-      clientName: 'Horizon Institute of Technology',
+      clientId: horizon.id,
       location: 'Pune',
       startDate: dateOnly(daysFromToday(-45)),
       endDate: dateOnly(daysFromToday(60)),
@@ -212,7 +260,7 @@ async function main(): Promise<void> {
       id: uuidv7(),
       name: 'Data Analytics Certificate — Summer Term',
       code: 'MO-DEMO-02',
-      clientName: 'Meridian Business School',
+      clientId: meridian.id,
       location: 'Bengaluru',
       startDate: dateOnly(daysFromToday(21)),
       status: 'planned',
@@ -222,19 +270,22 @@ async function main(): Promise<void> {
     },
   });
 
-  // Republic Day, as an organisation-wide holiday that leave will not consume.
-  await prisma.holiday
-    .upsert({
-      where: { projectId_date: { projectId: null as never, date: dateOnly(daysFromToday(14)) } },
-      update: {},
-      create: {
-        id: uuidv7(),
-        projectId: null,
-        date: dateOnly(daysFromToday(14)),
-        name: 'Public holiday',
-      },
-    })
-    .catch(() => undefined);
+  // An organisation-wide holiday, which leave will not consume and which the
+  // margin report leaves out of the month's working days.
+  //
+  // Not an upsert: the compound unique is (projectId, date), and in SQL a NULL
+  // projectId is never equal to anything — so the upsert's lookup always missed,
+  // the insert always raced itself, and the `.catch` this replaces swallowed the
+  // failure whole. The seed has been quietly creating no holiday at all.
+  const holidayDate = dateOnly(daysFromToday(14));
+  const existingHoliday = await prisma.holiday.findFirst({
+    where: { projectId: null, date: holidayDate },
+  });
+  if (!existingHoliday) {
+    await prisma.holiday.create({
+      data: { id: uuidv7(), projectId: null, date: holidayDate, name: 'Public holiday' },
+    });
+  }
 
   // ---------------------------------------------------------------- assignments
   for (const trainer of trainers) {
@@ -252,6 +303,14 @@ async function main(): Promise<void> {
         startDate: dateOnly(daysFromToday(-45)),
         status: 'active',
         leaveAllowanceDays: new Prisma.Decimal(3),
+        // The lead is billed above the contract rate and one trainer is not
+        // billed at all, so the margin report has both a premium and an
+        // unbilled row to show rather than one uniform number.
+        billRatePerDay: trainer.lead
+          ? new Prisma.Decimal(8500)
+          : trainer.unbilled
+            ? null
+            : new Prisma.Decimal(6500),
         createdById: users.manager!.id,
       },
     });

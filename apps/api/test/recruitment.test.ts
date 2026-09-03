@@ -56,7 +56,7 @@ async function createProject(): Promise<string> {
     .send({
       name: 'Spring Bootcamp',
       code: `SB-${Math.floor(Math.random() * 100000)}`,
-      clientName: 'Horizon Institute',
+      clientId: (await harness.seedClient('Horizon Institute')).id,
       startDate: futureDate(7),
       managerId: managerUser!.id,
       hrId: hrUser!.id,
@@ -140,7 +140,7 @@ describe('projects and positions', () => {
       .send({
         name: 'Misrouted',
         code: 'MIS-1',
-        clientName: 'Someone',
+        clientId: (await harness.seedClient()).id,
         startDate: futureDate(7),
         managerId: managerUser!.id,
         hrId: managerUser!.id,
@@ -162,7 +162,7 @@ describe('projects and positions', () => {
       .send({
         name: 'Backwards',
         code: 'BWD-1',
-        clientName: 'Someone',
+        clientId: (await harness.seedClient()).id,
         startDate: futureDate(30),
         endDate: futureDate(7),
         managerId: managerUser!.id,
@@ -177,7 +177,7 @@ describe('projects and positions', () => {
     const body = {
       name: 'First',
       code: 'DUP-1',
-      clientName: 'Someone',
+      clientId: (await harness.seedClient()).id,
       startDate: futureDate(7),
       managerId: managerUser!.id,
       hrId: hrUser!.id,

@@ -24,6 +24,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Talent Pool', path: '/pool', capability: 'pool.read', section: 'work' },
   { label: 'Flags', path: '/flags', capability: 'flags.raise', section: 'work' },
 
+  // The commercial side. Clients is the directory HR staffs against; Margin is
+  // the money, which is a narrower audience.
+  { label: 'Clients', path: '/clients', capability: 'clients.read', section: 'work' },
+  { label: 'Margin', path: '/margin', capability: 'billing.read', section: 'work' },
+
   // Trainer self-service.
   {
     label: 'My Profile',

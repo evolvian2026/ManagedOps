@@ -53,7 +53,14 @@ export class PositionsService {
           description: true,
           status: true,
           createdAt: true,
-          project: { select: { id: true, name: true, code: true, clientName: true } },
+          project: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              client: { select: { id: true, name: true } },
+            },
+          },
         },
       }),
       this.prisma.db.position.count({ where }),
@@ -79,7 +86,14 @@ export class PositionsService {
         status: true,
         closedAt: true,
         createdAt: true,
-        project: { select: { id: true, name: true, code: true, clientName: true } },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            client: { select: { id: true, name: true } },
+          },
+        },
       },
     });
     if (!position) throw new NotFoundProblem('That position');

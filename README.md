@@ -72,7 +72,8 @@ apps/
   api/         NestJS service and the scheduled-job worker
   web/         React + Vite single-page client
 packages/
-  shared/      Zod schemas, enums, state machines, the permission matrix
+  shared/      Zod schemas, enums, state machines, the permission matrix,
+               and the margin rules
   tsconfig/    Shared TypeScript configuration
 infra/
   compose/     Development and production Docker Compose
@@ -120,6 +121,48 @@ carry a 100% coverage requirement.
 `(assignment_id, work_date)` is what makes "one punch-in and one punch-out per
 day" unbreakable. Prefer a constraint over a check in application code whenever
 the database can express the rule.
+
+---
+
+## How margin is worked out
+
+The commercial side answers one question — did the work make money — and the
+answer depends on an asymmetry worth stating plainly.
+
+**Revenue is per day delivered.** A client is billed `billRatePerDay` for every
+day a trainer actually taught. Weekly offs, holidays and approved leave are not
+billed, because nothing was delivered on them.
+
+**Cost is a monthly salary, spread over the period's working days.** A salaried
+trainer is paid through holidays and approved leave alike, so their cost is not
+per-day piecework. Each assignment carries the share it earned:
+
+```
+salary cost = (annual salary / 12) x months x (payable days / working days in the period)
+```
+
+The denominator is the **period**, never the assignment. An assignment that
+began halfway through the month has half the payable days and so carries half
+the month's salary — measuring it against its own length would charge every
+partial assignment a full month.
+
+Reimbursements approved in the period are added to the cost. `margin` is what is
+left, and `marginPercent` is that as a share of revenue.
+
+**An assignment with no rate is `unbilled`, not a loss.** Internal work exists,
+and booking it at a 100% loss would make every roll-up above it meaningless — so
+its cost is counted, its revenue is absent rather than zero, and the report says
+how many such assignments are in the figure you are looking at.
+
+The arithmetic lives in `packages/shared/src/rules.ts` (`tallyDays`,
+`computeMargin`) and nowhere else; the API only feeds it facts. Every grouping —
+by project, by client, by trainer — is a roll-up of the same per-assignment
+figures, which is why the totals agree whichever way you cut them.
+
+Who sees any of this is a capability, not a role: `billing.read` for the numbers,
+`billing.manage` to set a rate, `clients.read` for the directory HR staffs
+against. A rate is omitted from the payload entirely for anyone without
+`billing.read` — not nulled, and not hidden in the client.
 
 ---
 

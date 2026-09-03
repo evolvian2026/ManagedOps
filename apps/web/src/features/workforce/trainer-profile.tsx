@@ -290,7 +290,7 @@ function Assignments({ trainer }: { trainer: TrainerDetail }) {
               {assignment.role === 'lead' ? <Badge tone="positive">Lead</Badge> : null}
             </div>
             <p className="mt-0.5 text-xs text-ink-soft">
-              {assignment.project.clientName} · {formatDate(assignment.startDate)}
+              {assignment.project.client.name} · {formatDate(assignment.startDate)}
               {assignment.endDate ? ` – ${formatDate(assignment.endDate)}` : ' onwards'}
             </p>
           </div>

@@ -5,6 +5,8 @@ import { formatDate, humanise } from '../onboarding/format';
 import { TrainerProfile } from './trainer-profile';
 import { toneFor } from '../operations/punch-card';
 import { useProjects, useRoster, type ProjectRow, type RosterRow } from './api';
+import { useAuth } from '../auth/auth-context';
+import { BillRateCell } from '../commercial/bill-rate';
 
 const PROJECT_TONE: Record<string, 'neutral' | 'positive' | 'pending' | 'critical'> = {
   planned: 'pending',
@@ -86,7 +88,7 @@ function ProjectCard({ project, onOpen }: { project: ProjectRow; onOpen: () => v
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-ink">{project.name}</h3>
-          <p className="truncate text-xs text-ink-faint">{project.clientName}</p>
+          <p className="truncate text-xs text-ink-faint">{project.client.name}</p>
         </div>
         <Badge tone={PROJECT_TONE[project.status] ?? 'neutral'}>{humanise(project.status)}</Badge>
       </div>
@@ -127,6 +129,10 @@ function ProjectRoster({
   onOpenTrainer: (trainerId: string) => void;
 }) {
   const roster = useRoster(projectId);
+  // The API omits the rate entirely for anyone without `billing.read`, so the
+  // column is only offered to somebody who would actually be sent one.
+  const { can } = useAuth();
+  const showsRates = can('billing.read');
 
   return (
     <>
@@ -142,7 +148,7 @@ function ProjectRoster({
         <>
           <PageHeader
             title={roster.data.project.name}
-            description={`${roster.data.project.clientName} · attendance shown for ${formatDate(roster.data.workDate)}`}
+            description={`${roster.data.project.client.name} · attendance shown for ${formatDate(roster.data.workDate)}`}
           />
 
           {roster.data.data.length === 0 ? (
@@ -160,6 +166,7 @@ function ProjectRoster({
                   <Th>Since</Th>
                   <Th>Today</Th>
                   <Th>Status</Th>
+                  {showsRates ? <Th className="text-right">Day rate</Th> : null}
                   <Th className="text-right">Profile</Th>
                 </>
               }
@@ -168,6 +175,7 @@ function ProjectRoster({
                 <RosterRowView
                   key={row.id}
                   row={row}
+                  showsRates={showsRates}
                   onOpen={() => onOpenTrainer(row.trainer.id)}
                 />
               ))}
@@ -179,7 +187,15 @@ function ProjectRoster({
   );
 }
 
-function RosterRowView({ row, onOpen }: { row: RosterRow; onOpen: () => void }) {
+function RosterRowView({
+  row,
+  showsRates,
+  onOpen,
+}: {
+  row: RosterRow;
+  showsRates: boolean;
+  onOpen: () => void;
+}) {
   const { trainer } = row;
 
   return (
@@ -209,6 +225,11 @@ function RosterRowView({ row, onOpen }: { row: RosterRow; onOpen: () => void }) 
       <Td>
         <Badge tone={TRAINER_TONE[trainer.status] ?? 'neutral'}>{humanise(trainer.status)}</Badge>
       </Td>
+      {showsRates ? (
+        <Td className="text-right whitespace-nowrap">
+          <BillRateCell assignmentId={row.id} rate={row.billRatePerDay ?? null} />
+        </Td>
+      ) : null}
       <Td className="text-right whitespace-nowrap">
         <Button variant="secondary" onClick={onOpen}>
           Open

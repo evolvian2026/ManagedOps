@@ -17,7 +17,7 @@ const LIST_SELECT = {
   id: true,
   name: true,
   code: true,
-  clientName: true,
+  client: { select: { id: true, name: true, code: true } },
   location: true,
   startDate: true,
   endDate: true,
@@ -45,7 +45,7 @@ export class ProjectsService {
             OR: [
               { name: { contains: query.q, mode: 'insensitive' as const } },
               { code: { contains: query.q, mode: 'insensitive' as const } },
-              { clientName: { contains: query.q, mode: 'insensitive' as const } },
+              { client: { name: { contains: query.q, mode: 'insensitive' as const } } },
             ],
           }
         : {}),
@@ -114,7 +114,7 @@ export class ProjectsService {
         id: newId(),
         name: input.name,
         code: input.code,
-        clientName: input.clientName,
+        clientId: input.clientId,
         location: input.location,
         startDate: new Date(input.startDate),
         endDate: input.endDate ? new Date(input.endDate) : null,
@@ -153,7 +153,7 @@ export class ProjectsService {
       where: { id },
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.clientName !== undefined ? { clientName: input.clientName } : {}),
+        ...(input.clientId !== undefined ? { clientId: input.clientId } : {}),
         ...(input.location !== undefined ? { location: input.location } : {}),
         ...(input.startDate !== undefined ? { startDate } : {}),
         ...(input.endDate !== undefined ? { endDate } : {}),

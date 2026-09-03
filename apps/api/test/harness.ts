@@ -25,6 +25,8 @@ export interface Harness {
   signIn: (email: string, password?: string) => Promise<Session>;
   /** Gives an account a known password, e.g. one created by offer conversion. */
   setPassword: (userId: string, password?: string) => Promise<void>;
+  /** A client to hang a project on, since a project cannot exist without one. */
+  seedClient: (name?: string) => Promise<{ id: string; name: string; code: string }>;
 }
 
 export interface SeedUserOptions {
@@ -71,6 +73,15 @@ export async function createHarness(): Promise<Harness> {
     http,
     close: async () => {
       await app.close();
+    },
+
+    async seedClient(name = 'Test Client') {
+      sequence += 1;
+      const code = `TC-${sequence}-${Date.now().toString(36).toUpperCase()}`.slice(0, 32);
+      return prisma.db.client.create({
+        data: { id: newId(), name, code },
+        select: { id: true, name: true, code: true },
+      });
     },
 
     async seedUser(options: SeedUserOptions): Promise<SeededUser> {
