@@ -309,15 +309,29 @@ export class LeaveService {
       }
     });
 
+    const dates =
+      toIstDateString(request.startDate) === toIstDateString(request.endDate)
+        ? toIstDateString(request.startDate)
+        : `${toIstDateString(request.startDate)} to ${toIstDateString(request.endDate)}`;
+
     await this.notifications.notify({
       userIds: [request.assignment.trainer.user.id],
       type: 'leave_decided',
       title: input.decision === 'approved' ? 'Your leave was approved' : 'Your leave was rejected',
-      body:
-        `${toIstDateString(request.startDate)} to ${toIstDateString(request.endDate)}` +
-        (input.decisionNote ? ` — ${input.decisionNote}` : '.'),
+      body: dates + (input.decisionNote ? ` — ${input.decisionNote}` : '.'),
       entityType: 'LeaveRequest',
       entityId: id,
+      // A decision somebody has been waiting on is worth a phone. The note is
+      // deliberately left out: a rejection reason is between them and their
+      // approver, not something to put on a lock screen.
+      mobile: {
+        template: 'leave_decided',
+        values: {
+          name: request.assignment.trainer.user.name,
+          dates,
+          outcome: input.decision === 'approved' ? 'approved' : 'rejected',
+        },
+      },
     });
 
     return this.get(id, user);

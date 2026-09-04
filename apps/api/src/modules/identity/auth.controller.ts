@@ -1,5 +1,15 @@
 import { randomBytes } from 'node:crypto';
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
@@ -7,19 +17,28 @@ import {
   changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
+  mfaChallengeSchema,
+  mfaDisableSchema,
+  mfaVerifySchema,
   resetPasswordSchema,
   type ChangePasswordInput,
   type LoginInput,
+  type MfaChallengeInput,
+  type MfaDisableInput,
+  type MfaVerifyInput,
 } from '@managedops/shared';
 import {
   AllowDuringPasswordChange,
   CurrentUser,
   Public,
   SkipAudit,
+  type AuthenticatedUser,
 } from '../../common/decorators/index.js';
+
 import { validate } from '../../common/pipes/zod-validation.pipe.js';
 import { ForbiddenProblem, UnauthorizedProblem } from '../../common/errors.js';
-import { AuthService, type SessionResult } from './auth.service.js';
+import { AuthService, isMfaChallenge, type SessionResult } from './auth.service.js';
+import { MfaService } from './mfa.service.js';
 import { TokenService } from './token.service.js';
 
 const REFRESH_COOKIE = 'managedops_refresh';
@@ -35,6 +54,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly tokens: TokenService,
+    private readonly mfa: MfaService,
     private readonly config: ConfigService,
   ) {}
 
@@ -47,8 +67,101 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const session = await this.auth.login(body, requestMeta(request));
+    const result = await this.auth.login(body, requestMeta(request));
+    // A challenge is not a session, so no cookie is set here. Anything that
+    // treats the two alike is the bug this shape exists to prevent.
+    if (isMfaChallenge(result)) return result;
+    return this.completeSession(result, response);
+  }
+
+  @Post('mfa/verify')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Finish a sign-in with a code from an authenticator' })
+  async verifyMfa(
+    @Body(validate(mfaVerifySchema)) body: MfaVerifyInput,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const session = await this.auth.verifyMfa(body.challengeToken, body.code, requestMeta(request));
     return this.completeSession(session, response);
+  }
+
+  /**
+   * Setting up a second factor, from either side of the line.
+   *
+   * With a challenge token: somebody whose role requires one and has not got
+   * one, part-way through a sign-in. Without: somebody already signed in who is
+   * adding one voluntarily. Same secret, same proof, two ways in.
+   */
+  /**
+   * Setting up an authenticator part-way through a sign-in.
+   *
+   * Separate from the signed-in route below rather than one endpoint taking an
+   * optional token: this one is reachable without a session by design, and a
+   * route that is public *sometimes* is a route whose audience nobody can state.
+   */
+  @Post('login/mfa/enrol')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Begin setting up an authenticator during sign-in' })
+  enrolDuringLogin(@Body(validate(mfaChallengeSchema)) body: MfaChallengeInput) {
+    return this.auth.enrolFromChallenge(body.challengeToken);
+  }
+
+  @Post('login/mfa/activate')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Turn the authenticator on and finish signing in' })
+  async activateDuringLogin(
+    @Body(validate(mfaVerifySchema)) body: MfaVerifyInput,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const { recoveryCodes, ...session } = await this.auth.activateFromChallenge(
+      body.challengeToken,
+      body.code,
+      requestMeta(request),
+    );
+    return { ...this.completeSession(session, response), recoveryCodes };
+  }
+
+  @Post('mfa/enrol')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Begin adding an authenticator to your account' })
+  enrolMfa(@CurrentUser('userId') userId: string) {
+    return this.mfa.beginEnrolment(userId);
+  }
+
+  @Post('mfa/activate')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Prove the authenticator works and turn it on' })
+  activateMfa(
+    @CurrentUser('userId') userId: string,
+    @Body(validate(mfaDisableSchema)) body: MfaDisableInput,
+  ) {
+    return this.mfa.completeEnrolment(userId, body.code);
+  }
+
+  @Delete('mfa')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove your authenticator, where your role allows it' })
+  async disableMfa(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(validate(mfaDisableSchema)) body: MfaDisableInput,
+  ) {
+    await this.mfa.disable(user.userId, user.role, body.code);
+    return { message: 'Your authenticator has been removed.' };
+  }
+
+  @Get('mfa')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Whether you hold a second factor, and whether you must' })
+  mfaStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.mfa.statusFor(user.userId, user.role);
   }
 
   @Post('refresh')

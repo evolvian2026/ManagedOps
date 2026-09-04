@@ -3,9 +3,14 @@
 # out of band. A secret in state is a secret in every plan output and every
 # state backup.
 
+# Holds JWT_ACCESS_SECRET, MFA_SECRET_KEY, and the messaging provider's
+# credentials. MFA_SECRET_KEY is what stands between a database dump and
+# somebody minting codes for every privileged account, so it belongs here rather
+# than in the task definition's environment where a describe-tasks call would
+# print it.
 resource "aws_secretsmanager_secret" "app" {
   name        = "${local.name}/app"
-  description = "JWT signing key and anything else the API needs at boot"
+  description = "JWT signing key, MFA encryption key, messaging credentials"
 
   recovery_window_in_days = var.environment == "production" ? 30 : 0
 }

@@ -1227,13 +1227,18 @@ Trainers; the payroll input register, which hands off to whatever runs payroll
 rather than running it; the quality feedback loop, whose summary feeds the
 re-hire decision; and document expiry, which makes the checklist ongoing
 compliance rather than a one-time gate. Then an information-architecture pass
-over the sidebar and the trainer profile.
+over the sidebar and the trainer profile, and two additions the reference
+documents did not anticipate: §15.5 assumed email was enough to reach a contract
+trainer, which it is not — six operational messages now also go to a phone over
+WhatsApp, falling back to SMS — and §10.1's password policy is not a sufficient
+guard on an account that can open every trainer's Aadhaar, so the roles the
+matrix marks sensitive now hold a second factor.
 
 | Check                                   | Result      |
 | --------------------------------------- | ----------- |
-| Shared contract tests                   | 224 passing |
-| API integration tests (real PostgreSQL) | 710 passing |
-| Browser tests (desktop + mobile)        | 155 passing |
+| Shared contract tests                   | 250 passing |
+| API integration tests (real PostgreSQL) | 752 passing |
+| Browser tests (desktop + mobile)        | 167 passing |
 | Typecheck, formatting, both builds      | Clean       |
 
 Every screen in §9.4 and §9.5 is implemented. There are no placeholders left.

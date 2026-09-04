@@ -17,6 +17,12 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { v7 as uuidv7 } from 'uuid';
+import {
+  canonicalRecoveryCode,
+  encryptMfaSecret,
+  generateRecoveryCode,
+  hashMfaValue,
+} from '../src/modules/identity/mfa-crypto.js';
 
 const prisma = new PrismaClient();
 
@@ -1479,6 +1485,51 @@ async function main(): Promise<void> {
     }
   }
 
+  // ------------------------------------------------------- a second factor
+  //
+  // One account with an authenticator already set up, so the code step can be
+  // seen without setting one up first. Deliberately its own account rather than
+  // one of the staff above: a TOTP code is single-use within its window, and
+  // enrolling an account the browser suite signs into dozens of times a minute
+  // would make those sign-ins collide with each other.
+  const mfaKey = process.env.MFA_SECRET_KEY;
+  // Fixed rather than random, and overridable, for the same reason SEED_PASSWORD
+  // is: a demo and a browser test both need to produce a code for this account,
+  // and neither can read one out of a log. Demo data, exactly like the password.
+  const mfaSecret = process.env.SEED_MFA_SECRET ?? 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
+
+  if (mfaKey) {
+    const recoveryCodes = Array.from({ length: 8 }, () => generateRecoveryCode());
+    const secured = await prisma.user.upsert({
+      where: { email: 'security.demo@managedops.local' },
+      update: {
+        mfaSecret: encryptMfaSecret(mfaSecret, mfaKey),
+        mfaEnrolledAt: new Date(),
+        mfaLastUsedStep: null,
+      },
+      create: {
+        id: uuidv7(),
+        name: 'Security Demo',
+        email: 'security.demo@managedops.local',
+        phone: '+919800000002',
+        role: 'hr',
+        passwordHash,
+        mustChangePassword: false,
+        mfaSecret: encryptMfaSecret(mfaSecret, mfaKey),
+        mfaEnrolledAt: new Date(),
+      },
+    });
+
+    await prisma.mfaRecoveryCode.deleteMany({ where: { userId: secured.id } });
+    await prisma.mfaRecoveryCode.createMany({
+      data: recoveryCodes.map((code) => ({
+        id: uuidv7(),
+        userId: secured.id,
+        codeHash: hashMfaValue(canonicalRecoveryCode(code)),
+      })),
+    });
+  }
+
   console.log('');
   console.log('Seed complete. Sign in with any of these — all share one password.');
   console.log('');
@@ -1490,6 +1541,13 @@ async function main(): Promise<void> {
   }
   console.log('');
   console.log(`  password     ${SEED_PASSWORD}`);
+  if (mfaKey) {
+    console.log('');
+    console.log('  An account with a second factor already set up:');
+    console.log('    hr           security.demo@managedops.local');
+    console.log(`    authenticator secret  ${mfaSecret}`);
+    console.log('    Add that to any authenticator app to get its codes.');
+  }
   console.log('');
   console.log(
     `  ${trainers.length} trainers on "${project.name}", ` +

@@ -4,10 +4,13 @@ import {
   CAPABILITIES,
   PERMISSIONS,
   SELF_SERVICE_CAPABILITIES,
+  SENSITIVE_CAPABILITIES,
   TRAINER_PROFILE_ROLES,
   can,
   capabilitiesFor,
   isGlobalAdmin,
+  mfaReasonsFor,
+  mfaRequiredFor,
   scopeFor,
   type Capability,
 } from '../src/rbac.js';
@@ -151,5 +154,49 @@ describe('helpers', () => {
     expect(capabilitiesFor('super_admin')).toHaveLength(
       CAPABILITIES.length - SELF_SERVICE_CAPABILITIES.length,
     );
+  });
+});
+
+describe('who must hold a second factor', () => {
+  it('requires one of every role that can read another person’s identity or pay', () => {
+    expect(mfaRequiredFor('super_admin')).toBe(true);
+    expect(mfaRequiredFor('hr')).toBe(true);
+    expect(mfaRequiredFor('manager')).toBe(true);
+  });
+
+  it('does not require one of a trainer, who can only see themselves', () => {
+    expect(mfaRequiredFor('trainer')).toBe(false);
+  });
+
+  it('does not require one of a project lead for reading their own salary', () => {
+    // A lead holds `trainers.read_salary`, scoped to `own`. Making them carry
+    // an authenticator to look at their own payslip would cost real time and
+    // protect nothing that a password does not already.
+    expect(scopeFor('project_lead', 'trainers.read_salary')).toBe('own');
+    expect(mfaRequiredFor('project_lead')).toBe(false);
+  });
+
+  it('does not require one of an interviewer, who sees no salary and no documents', () => {
+    expect(mfaRequiredFor('interviewer')).toBe(false);
+  });
+
+  it('names the capabilities that put a role over the line', () => {
+    expect(mfaReasonsFor('hr')).toContain('trainers.read_documents');
+    expect(mfaReasonsFor('manager')).toContain('billing.read');
+    expect(mfaReasonsFor('trainer')).toEqual([]);
+  });
+
+  it('follows the matrix rather than a list of role names', () => {
+    // The guarantee worth having: every role required to hold a second factor
+    // is required because of a capability it actually has at a scope wider than
+    // its own record — not because somebody typed its name into a list.
+    for (const role of ROLES) {
+      const reasons = mfaReasonsFor(role);
+      expect(mfaRequiredFor(role)).toBe(reasons.length > 0);
+      for (const capability of reasons) {
+        expect(SENSITIVE_CAPABILITIES).toContain(capability);
+        expect(scopeFor(role, capability)).not.toBe('own');
+      }
+    }
   });
 });

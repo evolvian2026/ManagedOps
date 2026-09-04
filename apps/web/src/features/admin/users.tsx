@@ -17,6 +17,7 @@ import { useAuth } from '../auth/auth-context';
 import { formatIst, humanise } from '../onboarding/format';
 import {
   useCreateUser,
+  useResetUserMfa,
   useResetUserPassword,
   useSetUserStatus,
   useUsers,
@@ -57,7 +58,9 @@ export function UsersPage() {
   });
   const setStatus = useSetUserStatus();
   const resetPassword = useResetUserPassword();
+  const resetMfa = useResetUserMfa();
   const [reset, setReset] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function toggle(row: UserRow) {
     setProblem(null);
@@ -70,10 +73,23 @@ export function UsersPage() {
 
   async function sendReset(row: UserRow) {
     setProblem(null);
+    setNotice(null);
     setReset(null);
     try {
       await resetPassword.mutateAsync(row.id);
       setReset(row.email);
+    } catch (error) {
+      setProblem(errorMessage(error));
+    }
+  }
+
+  async function clearMfa(row: UserRow) {
+    setProblem(null);
+    setReset(null);
+    setNotice(null);
+    try {
+      const result = await resetMfa.mutateAsync(row.id);
+      setNotice(result.message);
     } catch (error) {
       setProblem(errorMessage(error));
     }
@@ -114,6 +130,12 @@ export function UsersPage() {
           className="mb-4 rounded-md border border-danger/30 bg-danger-wash px-3 py-2 text-sm text-ink"
         >
           {problem}
+        </div>
+      ) : null}
+
+      {notice ? (
+        <div className="mb-4 rounded-md border border-primary/30 bg-primary-wash px-3 py-2 text-sm text-ink">
+          {notice}
         </div>
       ) : null}
 
@@ -164,12 +186,22 @@ export function UsersPage() {
                 {row.mustChangePassword ? (
                   <div className="mt-0.5 text-xs text-accent">Must change password</div>
                 ) : null}
+                <div className="mt-0.5 text-xs text-ink-soft">
+                  {row.mfaEnrolledAt ? 'Authenticator set up' : 'No authenticator'}
+                </div>
               </Td>
               <Td className="text-right whitespace-nowrap">
                 <div className="flex justify-end gap-2">
                   <Button variant="secondary" onClick={() => void sendReset(row)}>
                     Reset password
                   </Button>
+                  {/* The way back for somebody who has lost their phone. It
+                      leaves them enrolling again, not signing in without one. */}
+                  {row.mfaEnrolledAt ? (
+                    <Button variant="secondary" onClick={() => void clearMfa(row)}>
+                      Reset authenticator
+                    </Button>
+                  ) : null}
                   {/* Disabling your own account would sign you out mid-click. */}
                   {row.id === user?.id ? (
                     <span className="self-center text-xs text-ink-faint">You</span>

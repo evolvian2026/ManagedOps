@@ -204,7 +204,9 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body }),
-  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  // A body on DELETE is unusual but correct here: removing a second factor
+  // has to carry proof it is really you.
+  delete: <T>(path: string, body?: unknown) => request<T>(path, { method: 'DELETE', body }),
 };
 
 /** Turns any thrown value into the sentence a user should read. */

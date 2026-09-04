@@ -27,6 +27,29 @@ const envSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(7),
   COOKIE_SECURE: booleanish.default('false'),
 
+  // Encrypts the TOTP secrets at rest. A secret cannot be hashed — verifying a
+  // code needs it back — so this key is what stands between a database dump and
+  // somebody minting codes for every privileged account.
+  MFA_SECRET_KEY: z
+    .string()
+    .min(
+      32,
+      'MFA_SECRET_KEY must be at least 32 characters — generate with `openssl rand -hex 32`',
+    ),
+
+  /**
+   * `required` is the posture the product ships in: a role that the permission
+   * matrix says needs a second factor gets no session until it has one.
+   *
+   * `optional` still verifies anybody who *is* enrolled — the code path is the
+   * same — but stops short of forcing enrolment. It exists for the test
+   * environments, where a TOTP code is single-use within its thirty-second
+   * window and a suite signing in dozens of times a minute cannot produce
+   * distinct ones. The forced path is covered by its own suite, which runs
+   * with this set to `required`.
+   */
+  MFA_ENFORCEMENT: z.enum(['required', 'optional']).default('required'),
+
   S3_ENDPOINT: z.string().url().optional(),
   S3_REGION: z.string().default('ap-south-1'),
   S3_BUCKET: z.string().default('managedops-dev'),
@@ -41,13 +64,39 @@ const envSchema = z.object({
   SMTP_PASSWORD: z.string().optional(),
   MAIL_FROM: z.string().default('ManagedOps <no-reply@managedops.local>'),
 
+  // `log` renders each message into the application log, the way Mailpit
+  // catches email locally. `twilio` needs the three values below it.
+  MESSAGING_PROVIDER: z.enum(['log', 'twilio']).default('log'),
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_SMS_FROM: z.string().optional(),
+  TWILIO_WHATSAPP_FROM: z.string().optional(),
+
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 
 export type Env = z.infer<typeof envSchema>;
 
+/**
+ * Choosing the Twilio transport without giving it credentials would boot fine
+ * and then fail on every message — the worst kind of misconfiguration, because
+ * nothing is obviously broken until somebody does not get a reminder.
+ */
+const configuredEnvSchema = envSchema.superRefine((env, ctx) => {
+  if (env.MESSAGING_PROVIDER !== 'twilio') return;
+  for (const key of ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_SMS_FROM'] as const) {
+    if (!env[key]) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: 'is required when MESSAGING_PROVIDER is twilio',
+      });
+    }
+  }
+});
+
 export function loadConfiguration() {
-  const parsed = envSchema.safeParse(process.env);
+  const parsed = configuredEnvSchema.safeParse(process.env);
   if (!parsed.success) {
     const problems = parsed.error.issues
       .map((issue) => `  ${issue.path.join('.')}: ${issue.message}`)
@@ -72,6 +121,7 @@ export function loadConfiguration() {
       refreshTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
     },
     cookieSecure: env.COOKIE_SECURE,
+    mfa: { secretKey: env.MFA_SECRET_KEY, enforcement: env.MFA_ENFORCEMENT },
     s3: {
       endpoint: env.S3_ENDPOINT,
       region: env.S3_REGION,
@@ -87,6 +137,15 @@ export function loadConfiguration() {
       user: env.SMTP_USER,
       password: env.SMTP_PASSWORD,
       from: env.MAIL_FROM,
+    },
+    messaging: {
+      provider: env.MESSAGING_PROVIDER,
+      twilio: {
+        accountSid: env.TWILIO_ACCOUNT_SID,
+        authToken: env.TWILIO_AUTH_TOKEN,
+        smsFrom: env.TWILIO_SMS_FROM,
+        whatsappFrom: env.TWILIO_WHATSAPP_FROM,
+      },
     },
     logLevel: env.LOG_LEVEL,
   };

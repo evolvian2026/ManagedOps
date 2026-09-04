@@ -382,6 +382,108 @@ different question from being allowed to open it.
 
 ---
 
+## Reaching people on their phone
+
+Email is the wrong channel for most of what this app has to tell a trainer. A
+contract trainer between two client sites reads WhatsApp; the work address we
+created for them on day one may never be opened. So six operational messages —
+your account is ready, your documents are outstanding, a document is about to
+lapse, your leave was decided, your correction was decided, your claim was
+decided — also go to a phone.
+
+**Neither channel accepts free text.** WhatsApp Business rejects a
+business-initiated message that is not an approved template, and an Indian SMS
+route requires content registered under TRAI's DLT rules before it will carry
+it. So a mobile message is a template id plus values for its declared
+parameters, never a string composed at the call site, and the catalogue lives in
+`packages/shared/src/messaging.ts` — what we registered and what we send have to
+be the same thing.
+
+**The order of a template's parameters is part of its contract.** WhatsApp
+substitutes them positionally, so a parameter declared but never used shifts
+every value after it into the wrong slot — a message that is wrong rather than
+refused. The shared test suite renders every template with sentinel values and
+fails if any declared parameter goes unused.
+
+**WhatsApp first, SMS as the fallback.** WhatsApp is cheaper, it is where these
+trainers already are, and it carries more than 160 characters. SMS costs more
+and says less, but it arrives on a phone with no app and no data — which is
+exactly when the first one failed.
+
+**The caller says what, never who to.** `notify()` takes a template and values;
+the messaging service resolves each recipient's number, honours their opt-out
+and picks the channel. A call site passing its own number is a call site that
+can send one person's leave decision to another's phone.
+
+**Every attempt is recorded, including the ones not made.** `message_deliveries`
+holds one row per attempt with the channel, the provider's message id and the
+error — because "did the trainer get the reminder?" is a question that gets
+asked about leave decisions and document deadlines. Not sending is recorded too,
+and the two reasons read differently: a number nobody has is one to collect, an
+opt-out is a choice to respect. Numbers are stored masked; the contact record is
+on the user, and a log queried daily has no reason to hold every mobile number
+in the company.
+
+**A number is normalised on the way in, and a constraint keeps it that way.**
+`phoneSchema` transforms rather than merely validating, so `+91 98000 01002` and
+`09800001002` become one stored value, and a CHECK constraint refuses anything
+that is not `+91` followed by ten digits. Nothing below the messaging layer
+re-parses a number before sending to it.
+
+Locally the `log` transport renders each message into the application log, the
+way Mailpit catches email. It is not a stub that always succeeds: numbers in a
+reserved range fail, so the fallback and the failure recording are exercised by
+the same code that runs in production.
+
+---
+
+## The second factor
+
+An account that can open identity documents or read what people are paid is
+worth stealing, and a password alone is a poor guard on one: it is reused, it is
+phished, and one of these accounts opens every trainer's Aadhaar at once.
+
+**Which roles need one is derived, not listed.** `mfaRequiredFor` walks the same
+permission matrix the API enforces, and it turns on _scope_ rather than on
+holding a capability at all. A project lead holds `trainers.read_salary` — over
+themselves — and making them carry an authenticator to look at their own payslip
+would be theatre with a real cost in forgotten phones. HR holds the same
+capability over everybody, which is a different thing. Being derived, it cannot
+fall behind: a role given `payroll.read` at `all` tomorrow needs a second factor
+from the moment the matrix says so.
+
+**A challenge is not a session.** A correct password from a privileged account
+returns a short-lived, single-use token that opens nothing except the verify and
+enrol endpoints — no access token, no refresh cookie. Enrolment is not optional
+for a role that requires one: there is no session until it is done, because a
+control everybody can defer is not a control.
+
+**A code cannot be used twice.** The last accepted time step is recorded, so a
+six-digit code read over somebody's shoulder is worth nothing for the rest of
+its own thirty-second window.
+
+**A wrong code costs the challenge, not the account.** Five attempts and the
+challenge is spent; the account is untouched. Locking it would let anybody
+holding a leaked password lock out the person who owns it — a denial of service
+dressed as a control.
+
+**The secret is encrypted, not hashed.** Verifying a code needs the secret back,
+so a one-way function is not an option. AES-256-GCM under `MFA_SECRET_KEY`,
+authenticated so a stored secret cannot be swapped for one an attacker holds.
+Recovery codes _are_ hashed, and each works once.
+
+**A required role cannot turn it off**, and a super admin can reset somebody who
+lost their phone — which also revokes every session of theirs, since whoever
+asked for the reset may be the person who found the phone.
+
+`MFA_ENFORCEMENT` decides whether enrolment is forced. It ships as `required`.
+The test environments run `optional`, which still verifies anybody already
+enrolled but stops short of forcing enrolment — a TOTP code is single-use inside
+its window, and a suite signing in dozens of times a minute cannot produce
+distinct ones. The forced path has its own suite, which runs with it on.
+
+---
+
 ## Errors
 
 Every failure is an RFC 9457 Problem Details document with a stable `type` and a
@@ -458,12 +560,14 @@ than stored), skills and availability matching, the payroll input register, the
 quality feedback loop, and document expiry. Then an information-architecture
 pass, once the sidebar and the trainer profile had both outgrown a flat list:
 six named sidebar sections and four groups of profile tabs, with empty groups
-dropped rather than shown as bare headings.
+dropped rather than shown as bare headings. Then two more, each with its own
+section above: operational messages to a trainer's phone over WhatsApp and SMS,
+and a second factor for the roles that can read identity documents and pay.
 
 Every screen in the specification is implemented; there are no placeholders.
 
 | Suite                             | Count |
 | --------------------------------- | ----- |
-| Shared contracts                  | 224   |
-| API integration (real PostgreSQL) | 710   |
-| Browser (desktop + mobile)        | 155   |
+| Shared contracts                  | 250   |
+| API integration (real PostgreSQL) | 752   |
+| Browser (desktop + mobile)        | 167   |

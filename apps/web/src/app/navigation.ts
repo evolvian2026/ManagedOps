@@ -85,6 +85,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
     capability: 'reimbursements.submit',
     section: 'yours',
   },
+  // No capability: everybody has a phone number and a way of signing in, and an
+  // administrator with no trainer profile still has both to look after.
+  { label: 'My Account', path: '/my/account', section: 'yours' },
 
   { label: 'Audit Log', path: '/audit', capability: 'audit.read', section: 'admin' },
   { label: 'Users', path: '/users', capability: 'users.manage', section: 'admin' },

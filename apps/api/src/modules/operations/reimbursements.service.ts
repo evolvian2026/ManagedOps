@@ -174,6 +174,16 @@ export class ReimbursementsService {
         `₹${amount.toLocaleString('en-IN')}` + (input.reviewNote ? ` — ${input.reviewNote}` : '.'),
       entityType: 'Reimbursement',
       entityId: id,
+      // Somebody who paid for a client site out of their own pocket is waiting
+      // on this one.
+      mobile: {
+        template: 'claim_decided',
+        values: {
+          name: claim.trainer.user.name,
+          amount: `₹${amount.toLocaleString('en-IN')}`,
+          outcome: input.decision === 'approved' ? 'approved' : 'rejected',
+        },
+      },
     });
 
     return decided;
@@ -214,6 +224,14 @@ export class ReimbursementsService {
         (input.reference ? ` (reference ${input.reference}).` : '.'),
       entityType: 'Reimbursement',
       entityId: id,
+      mobile: {
+        template: 'claim_decided',
+        values: {
+          name: paid.trainer.user.name,
+          amount: `₹${Number(claim.amount).toLocaleString('en-IN')}`,
+          outcome: 'reimbursed',
+        },
+      },
     });
 
     return paid;

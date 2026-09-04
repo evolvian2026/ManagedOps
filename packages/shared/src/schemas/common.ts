@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normaliseIndianMobile } from '../messaging.js';
 
 /** `YYYY-MM-DD`, the shape every work date crosses the wire in. */
 export const dateStringSchema = z
@@ -19,11 +20,29 @@ export const emailSchema = z
   .email('Enter a valid email address')
   .max(254);
 
-/** Indian mobile numbers, optionally with a +91 country code. */
+/**
+ * An Indian mobile number, stored in one canonical form.
+ *
+ * This normalises rather than merely validating, because a number is only
+ * useful if something can send to it. Accepting "+91 98000 01002" and
+ * "09800001002" as typed leaves two spellings of one number in the database,
+ * and the messaging layer then has to re-parse every number it reads — which is
+ * how a reminder ends up not being sent at all.
+ */
 export const phoneSchema = z
   .string()
   .trim()
-  .regex(/^(\+91[- ]?)?[6-9]\d{9}$/, 'Enter a 10-digit Indian mobile number');
+  .transform((value, ctx) => {
+    const normalised = normaliseIndianMobile(value);
+    if (!normalised) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Enter a 10-digit Indian mobile number',
+      });
+      return z.NEVER;
+    }
+    return normalised;
+  });
 
 export const latitudeSchema = z.number().min(-90).max(90);
 export const longitudeSchema = z.number().min(-180).max(180);

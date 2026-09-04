@@ -91,4 +91,21 @@ export class UsersController {
   ) {
     return this.users.resetPassword(id, actorId);
   }
+
+  /**
+   * For somebody who has lost the phone their authenticator was on.
+   *
+   * Behind `users.manage` and audited, because it is the one way to turn a
+   * second factor off for an account that is required to have one — and it
+   * leaves them enrolling again on their next sign-in rather than without one.
+   */
+  @Post(':id/reset-mfa')
+  @RequireCapability('users.manage')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Clear somebody’s authenticator so they can set up a new one' })
+  resetMfa(@Param('id', validate(uuidSchema)) id: string) {
+    // Who did it is recorded by the audit interceptor; there is no column on a
+    // cleared authenticator to stamp an actor into.
+    return this.users.resetMfa(id);
+  }
 }

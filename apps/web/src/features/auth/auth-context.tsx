@@ -20,11 +20,29 @@ interface LoginResponse {
   user: SessionUser;
 }
 
+/**
+ * What a privileged sign-in gets instead of a session: the right to present a
+ * second factor, and nothing else.
+ */
+export interface MfaChallenge {
+  mfa: 'verification' | 'enrolment';
+  challengeToken: string;
+  expiresIn: number;
+}
+
+export type SignInResult = { user: SessionUser } | MfaChallenge;
+
+export function isMfaChallenge(result: SignInResult): result is MfaChallenge {
+  return 'mfa' in result;
+}
+
 interface AuthState {
   user: SessionUser | null;
   /** True only while the initial "am I already signed in?" check is running. */
   initialising: boolean;
-  signIn: (email: string, password: string) => Promise<SessionUser>;
+  signIn: (email: string, password: string) => Promise<SignInResult>;
+  completeMfa: (challengeToken: string, code: string) => Promise<SessionUser>;
+  completeMfaEnrolment: (challengeToken: string, code: string) => Promise<string[]>;
   signOut: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   can: (capability: Capability) => boolean;
@@ -65,12 +83,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSessionExpired(() => setUser(null));
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const session = await api.post<LoginResponse>('/auth/login', { email, password });
+  const adopt = useCallback((session: LoginResponse) => {
     setAccessToken(session.accessToken);
     setUser(session.user);
     return session.user;
   }, []);
+
+  const signIn = useCallback(
+    async (email: string, password: string): Promise<SignInResult> => {
+      const result = await api.post<LoginResponse | MfaChallenge>('/auth/login', {
+        email,
+        password,
+      });
+      // A challenge is not a session, so no token is adopted here — the page
+      // asks for a code and comes back through `completeMfa`.
+      if ('mfa' in result) return result;
+      return { user: adopt(result) };
+    },
+    [adopt],
+  );
+
+  /** Finishes a sign-in with a code from an authenticator, or a recovery code. */
+  const completeMfa = useCallback(
+    async (challengeToken: string, code: string) => {
+      const session = await api.post<LoginResponse>('/auth/mfa/verify', { challengeToken, code });
+      return adopt(session);
+    },
+    [adopt],
+  );
+
+  /** Finishes the first-time setup, which both turns it on and signs them in. */
+  const completeMfaEnrolment = useCallback(
+    async (challengeToken: string, code: string) => {
+      const session = await api.post<LoginResponse & { recoveryCodes: string[] }>(
+        '/auth/login/mfa/activate',
+        { challengeToken, code },
+      );
+      adopt(session);
+      return session.recoveryCodes;
+    },
+    [adopt],
+  );
 
   const signOut = useCallback(async () => {
     try {
@@ -99,8 +152,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<AuthState>(
-    () => ({ user, initialising, signIn, signOut, changePassword, can }),
-    [user, initialising, signIn, signOut, changePassword, can],
+    () => ({
+      user,
+      initialising,
+      signIn,
+      completeMfa,
+      completeMfaEnrolment,
+      signOut,
+      changePassword,
+      can,
+    }),
+    [user, initialising, signIn, completeMfa, completeMfaEnrolment, signOut, changePassword, can],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

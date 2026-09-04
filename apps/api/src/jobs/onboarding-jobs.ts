@@ -53,6 +53,12 @@ export class OnboardingJobs {
             `Upload them from your profile: ${webBaseUrl}/my/profile\n\n` +
             `You can keep using ManagedOps in the meantime — this is a reminder, not a lock-out.\n`,
         },
+        // The one message most likely to be missed by email: a new joiner has
+        // barely used the work address we made for them.
+        mobile: {
+          template: 'documents_outstanding',
+          values: { name: trainer.user.name, outstanding },
+        },
       });
 
       if (stage === 2 && trainer.onboardingHrId) {
@@ -116,6 +122,17 @@ export class OnboardingJobs {
             (expired
               ? `A client may refuse you access to site until this is current again.\n`
               : `Renewing it before it lapses saves everyone the scramble.\n`),
+        },
+        // Two registered templates, picked on the fact. `daysRemaining` goes
+        // negative once a document has lapsed, so the count is taken as a
+        // magnitude and the tense comes from the template.
+        mobile: {
+          template: expired ? 'document_expired' : 'document_expiring',
+          values: {
+            name: trainer.user.name,
+            document: label.toLowerCase(),
+            days: String(Math.abs(validity.daysRemaining ?? 0)),
+          },
         },
       });
 

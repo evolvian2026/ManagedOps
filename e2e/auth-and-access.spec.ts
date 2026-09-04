@@ -113,7 +113,16 @@ test.describe('what each role can see', () => {
 
   test('groups the sidebar, and shows no heading with nothing under it', async ({ page }) => {
     await signIn(page, ACCOUNTS.hr);
-    expect(await navSections(page)).toEqual(['delivery', 'people', 'commercial', 'administration']);
+    // "Your work" is there for everybody now: an administrator has no trainer
+    // profile, but they do have a phone number and an authenticator to look
+    // after, and My Account is where both live.
+    expect(await navSections(page)).toEqual([
+      'delivery',
+      'people',
+      'commercial',
+      'your work',
+      'administration',
+    ]);
 
     // HR staffs against the client directory but never sees a rate, so
     // Commercial is present without Margin under it.

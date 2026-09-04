@@ -463,6 +463,7 @@ export class AttendanceService {
         requestedPunchIn: true,
         requestedPunchOut: true,
         requestedById: true,
+        requestedBy: { select: { name: true } },
         attendanceRecord: {
           select: {
             id: true,
@@ -537,6 +538,16 @@ export class AttendanceService {
           : (input.reviewNote ?? 'No reason was given.'),
       entityType: 'AttendanceCorrection',
       entityId: correctionId,
+      // A rejected correction means a day still counts against them, which is
+      // worth knowing before the month closes rather than after.
+      mobile: {
+        template: 'correction_decided',
+        values: {
+          name: correction.requestedBy.name,
+          date: toIstDateString(record.workDate),
+          outcome: input.decision === 'approved' ? 'approved' : 'rejected',
+        },
+      },
     });
 
     return decided;

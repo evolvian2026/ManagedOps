@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   LOGIN_LOCKOUT_MINUTES,
   LOGIN_MAX_ATTEMPTS,
+  MFA_CHALLENGE_TTL_MINUTES,
   capabilitiesFor,
   type AuthUser,
   type ChangePasswordInput,
@@ -19,6 +20,7 @@ import {
 } from '../../common/errors.js';
 import { AuditService } from '../audit/audit.service.js';
 import { MailService } from '../notifications/mail.service.js';
+import { MfaService } from './mfa.service.js';
 import { PasswordService } from './password.service.js';
 import { TokenService, type IssuedTokens } from './token.service.js';
 
@@ -27,6 +29,26 @@ export interface SessionResult {
   refreshToken: string;
   expiresIn: number;
   user: AuthUser & { capabilities: string[] };
+}
+
+/**
+ * What a correct password buys somebody whose role requires a second factor:
+ * the right to present one, and nothing else.
+ *
+ * `enrolment` rather than `verification` when they have never set one up. There
+ * is no grace period — a role that requires an authenticator gets no session
+ * until it has one, because a control everybody can defer is not a control.
+ */
+export interface MfaChallengeResult {
+  mfa: 'verification' | 'enrolment';
+  challengeToken: string;
+  expiresIn: number;
+}
+
+export type LoginResult = SessionResult | MfaChallengeResult;
+
+export function isMfaChallenge(result: LoginResult): result is MfaChallengeResult {
+  return 'mfa' in result;
 }
 
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
@@ -41,13 +63,11 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly audit: AuditService,
     private readonly mail: MailService,
+    private readonly mfa: MfaService,
     private readonly config: ConfigService,
   ) {}
 
-  async login(
-    input: LoginInput,
-    meta: { ip?: string; userAgent?: string },
-  ): Promise<SessionResult> {
+  async login(input: LoginInput, meta: { ip?: string; userAgent?: string }): Promise<LoginResult> {
     const user = await this.prisma.db.user.findUnique({
       where: { email: input.email },
       include: { trainer: { select: { id: true } }, ledProjects: { select: { id: true } } },
@@ -89,21 +109,119 @@ export class AuthService {
       data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() },
     });
 
-    const subject = {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      mustChangePassword: user.mustChangePassword,
-      trainerId: user.trainer?.id ?? null,
-      ledProjectIds: user.ledProjects.map((project) => project.id),
-    };
-    const issued = await this.tokens.issue(subject, meta);
+    // The password was right. Whether that is enough depends on what this role
+    // can reach — and enrolling is not optional for a role that requires one.
+    if (this.mfa.requiredFor(user.role) || user.mfaEnrolledAt) {
+      const enrolling = !user.mfaEnrolledAt;
+      const { token } = await this.mfa.issueChallenge(user.id, enrolling);
+
+      await this.audit.record({
+        actorUserId: user.id,
+        action: enrolling ? 'MFA_ENROLMENT_REQUIRED' : 'MFA_CHALLENGED',
+        entityType: 'User',
+        entityId: user.id,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+
+      return {
+        mfa: enrolling ? 'enrolment' : 'verification',
+        challengeToken: token,
+        expiresIn: MFA_CHALLENGE_TTL_MINUTES * 60,
+      };
+    }
+
+    return this.issueSession(user.id, meta);
+  }
+
+  /**
+   * The second half of a privileged sign-in.
+   *
+   * The challenge is spent here whether or not the code was right — a wrong one
+   * costs an attempt against that challenge, and running out means starting
+   * again from the password rather than locking the account, which would let
+   * anybody holding a leaked password lock its owner out.
+   */
+  async verifyMfa(
+    challengeToken: string,
+    code: string,
+    meta: { ip?: string; userAgent?: string },
+  ): Promise<SessionResult> {
+    let userId: string;
+    try {
+      userId = await this.mfa.consumeChallenge(challengeToken, code);
+    } catch (error) {
+      const challenge = await this.mfa.openChallenge(challengeToken).catch(() => null);
+      await this.audit.record({
+        actorUserId: challenge?.userId ?? null,
+        action: 'MFA_FAILED',
+        entityType: 'User',
+        entityId: challenge?.userId ?? null,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
+      throw error;
+    }
 
     await this.audit.record({
-      actorUserId: user.id,
+      actorUserId: userId,
+      action: 'MFA_VERIFIED',
+      entityType: 'User',
+      entityId: userId,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
+    return this.issueSession(userId, meta);
+  }
+
+  /**
+   * Enrolment driven from a login challenge, for somebody who has never set one
+   * up. Completing it both turns the factor on and finishes the sign-in, so
+   * they are not asked for a code twice in a row.
+   */
+  async enrolFromChallenge(challengeToken: string) {
+    const challenge = await this.mfa.openChallenge(challengeToken);
+    return this.mfa.beginEnrolment(challenge.userId);
+  }
+
+  async activateFromChallenge(
+    challengeToken: string,
+    code: string,
+    meta: { ip?: string; userAgent?: string },
+  ): Promise<SessionResult & { recoveryCodes: string[] }> {
+    const challenge = await this.mfa.openChallenge(challengeToken);
+    const { recoveryCodes } = await this.mfa.completeEnrolment(challenge.userId, code);
+
+    // The challenge has done its job; leaving it open would be a second way in.
+    await this.mfa.consumeChallengeWithoutCode(challengeToken);
+
+    await this.audit.record({
+      actorUserId: challenge.userId,
+      action: 'MFA_ENROLLED',
+      entityType: 'User',
+      entityId: challenge.userId,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
+    const session = await this.issueSession(challenge.userId, meta);
+    return { ...session, recoveryCodes };
+  }
+
+  private async issueSession(
+    userId: string,
+    meta: { ip?: string; userAgent?: string },
+  ): Promise<SessionResult> {
+    const subject = await this.tokens.loadSubject(userId);
+    const issued = await this.tokens.issue(subject, meta);
+    const user = await this.requireUser(userId);
+
+    await this.audit.record({
+      actorUserId: userId,
       action: 'LOGIN',
       entityType: 'User',
-      entityId: user.id,
+      entityId: userId,
       ip: meta.ip,
       userAgent: meta.userAgent,
     });

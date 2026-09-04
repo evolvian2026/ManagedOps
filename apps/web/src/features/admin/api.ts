@@ -45,6 +45,7 @@ export interface UserRow {
   role: Role;
   status: 'active' | 'disabled';
   mustChangePassword: boolean;
+  mfaEnrolledAt: string | null;
   lastLoginAt: string | null;
   createdAt: string;
 }
@@ -89,4 +90,9 @@ export function useResetUserPassword() {
   return useUsersMutation((id: string) =>
     api.post<{ message: string }>(`/users/${id}/reset-password`),
   );
+}
+
+/** For somebody who has lost the phone their authenticator was on. */
+export function useResetUserMfa() {
+  return useUsersMutation((id: string) => api.post<{ message: string }>(`/users/${id}/reset-mfa`));
 }

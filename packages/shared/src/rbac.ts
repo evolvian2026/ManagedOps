@@ -331,3 +331,51 @@ export function capabilitiesFor(role: Role): Capability[] {
     .filter(([, scope]) => scope != null)
     .map(([cap]) => cap as Capability);
 }
+
+/* ------------------------------------------------------- the second factor */
+
+/**
+ * The capabilities that make an account worth stealing.
+ *
+ * Identity documents, what people are paid, what the business earns, and the
+ * ability to hand out accounts. A password alone is a poor guard on any of
+ * these: it is reused, it is phished, and one of these accounts opens every
+ * trainer's Aadhaar at once.
+ */
+export const SENSITIVE_CAPABILITIES: readonly Capability[] = [
+  'users.manage',
+  'trainers.read_documents',
+  'trainers.read_salary',
+  'billing.read',
+  'payroll.read',
+  'audit.read',
+];
+
+/**
+ * Whether a role must hold a second factor.
+ *
+ * Derived rather than listed, and derived on *scope* rather than on holding the
+ * capability at all — which is the distinction that matters. A project lead
+ * holds `trainers.read_salary`, but only over themselves; making them carry an
+ * authenticator to look at their own payslip would be security theatre with a
+ * real cost in forgotten phones. HR holds the same capability over everybody,
+ * and that is a different thing entirely.
+ *
+ * Being derived, it also cannot fall behind: a role given `payroll.read` at
+ * `all` tomorrow requires a second factor from the moment the matrix says so,
+ * with nobody remembering to update a list of role names.
+ */
+export function mfaRequiredFor(role: Role): boolean {
+  return SENSITIVE_CAPABILITIES.some((capability) => {
+    const scope = scopeFor(role, capability);
+    return scope !== null && scope !== 'own';
+  });
+}
+
+/** The capabilities that put a given role over the line, for explaining why. */
+export function mfaReasonsFor(role: Role): Capability[] {
+  return SENSITIVE_CAPABILITIES.filter((capability) => {
+    const scope = scopeFor(role, capability);
+    return scope !== null && scope !== 'own';
+  });
+}

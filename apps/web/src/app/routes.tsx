@@ -6,6 +6,7 @@ import { ChangePasswordPage } from '../features/auth/change-password-page';
 import { DashboardPage } from '../features/dashboard/dashboard-page';
 import { OnboardingPage } from '../features/onboarding/onboarding-page';
 import { RunningProjectsPage } from '../features/workforce/running-projects';
+import { MyAccountPage } from '../features/auth/my-account-page';
 import { MyProfilePage } from '../features/workforce/my-profile';
 import { MyWorkPage } from '../features/operations/my-work';
 import { MyLeavePage } from '../features/operations/my-leave';
@@ -169,6 +170,8 @@ export function AppRoutes() {
             </RequireCapability>
           }
         />
+        {/* No capability: every signed-in user has an account to look after. */}
+        <Route path="my/account" element={<MyAccountPage />} />
         <Route
           path="my/profile"
           element={

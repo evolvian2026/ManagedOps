@@ -31,6 +31,21 @@ enum Role {
   trainer
 }
 
+/// Only the two channels that reach a phone. Email delivery is not recorded
+/// here — SMTP acceptance says nothing about an inbox, so a row would imply a
+/// certainty we do not have.
+enum MobileChannel {
+  whatsapp
+  sms
+}
+
+enum MessageDeliveryStatus {
+  sent
+  failed
+  /// Not attempted, and why is in `error` — no number on file, or opted out.
+  skipped
+}
+
 enum UserStatus {
   active
   disabled
@@ -312,6 +327,22 @@ model User {
   mustChangePassword Boolean   @default(true)
   lastLoginAt        DateTime?
 
+  /// Whether operational messages also go to their phone. One switch rather
+  /// than per-event preferences: the six things we send are all things the
+  /// person needs, so the honest choice is this channel or not.
+  mobileNotifications Boolean @default(true)
+
+  /// The TOTP secret, encrypted rather than hashed — verifying a code needs the
+  /// secret back, so there is no one-way option here. AES-256-GCM under a key
+  /// from the environment, so a database dump on its own does not mint codes.
+  mfaSecret       String?
+  /// Null until they have proved they can produce a code from it. An enrolment
+  /// that was started and abandoned must not count as a second factor.
+  mfaEnrolledAt   DateTime?
+  /// The last time step accepted, so a code cannot be replayed inside its own
+  /// thirty-second window by anybody who saw it over a shoulder.
+  mfaLastUsedStep BigInt?
+
   // Lockout counters (spec 10.1): five failures in fifteen minutes.
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
@@ -326,7 +357,10 @@ model User {
   trainer            Trainer?
   refreshTokens      RefreshToken[]
   passwordResets     PasswordReset[]
+  mfaRecoveryCodes   MfaRecoveryCode[]
+  mfaChallenges      MfaChallenge[]
   notifications      Notification[]
+  messageDeliveries  MessageDelivery[]
   auditLogs          AuditLog[]
   managedProjects    Project[]           @relation("ProjectManager")
   hrProjects         Project[]           @relation("ProjectHr")
@@ -350,6 +384,48 @@ model User {
   @@index([role, status])
   @@index([deletedAt])
   @@map("users")
+}
+
+/// A way back in when the phone with the authenticator is lost or replaced.
+///
+/// Stored hashed, exactly like a password, and each one works once — the codes
+/// are shown to the person a single time at enrolment and never again, so a
+/// leaked backup of this table is worth nothing.
+model MfaRecoveryCode {
+  id        String    @id
+  userId    String
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@map("mfa_recovery_codes")
+}
+
+/// What stands between a correct password and a session.
+///
+/// A short-lived, single-use token issued when the password checks out but the
+/// second factor has not been given yet. It is deliberately not a session: it
+/// carries no access token and opens nothing except the verify and enrol
+/// endpoints, so a stolen challenge is worth far less than a stolen session.
+model MfaChallenge {
+  id         String    @id
+  userId     String
+  tokenHash  String    @unique
+  /// Whether they still have to set up a second factor before they can use it.
+  enrolling  Boolean   @default(false)
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+  @@map("mfa_challenges")
 }
 
 model RefreshToken {
@@ -433,6 +509,39 @@ model Notification {
   @@index([userId, readAt, createdAt(sort: Desc)])
   @@index([createdAt])
   @@map("notifications")
+}
+
+/// One row per attempt to reach a phone.
+///
+/// Without this, "did the trainer get the reminder?" has no answer — and for a
+/// leave decision or a document deadline that question gets asked. It records
+/// the attempt, not the read: a provider accepting a message is as far as our
+/// knowledge goes.
+model MessageDelivery {
+  id       String                @id
+  userId   String
+  channel  MobileChannel
+  status   MessageDeliveryStatus
+  /// The registered template name, so a provider rejecting one can be traced
+  /// back to what we sent rather than to a request id nobody kept.
+  template String
+  /// Masked. The contact record is on the user; a delivery log read daily has
+  /// no reason to hold ten thousand full mobile numbers.
+  toMasked String
+  /// What a support conversation with the provider turns on.
+  providerMessageId String?
+  error             String?
+  /// The event this accompanied, so it lines up with the in-app notification.
+  notificationType  String
+  entityType        String?
+  entityId          String?
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, createdAt])
+  @@map("message_deliveries")
 }
 
 // ---------------------------------------------------------------- files

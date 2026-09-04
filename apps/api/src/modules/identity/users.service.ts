@@ -7,6 +7,7 @@ import { newId } from '../../common/ids.js';
 import { paginate, toPrismaPage } from '../../common/pagination.js';
 import { DomainRuleProblem, NotFoundProblem, ValidationProblem } from '../../common/errors.js';
 import { MailService } from '../notifications/mail.service.js';
+import { MfaService } from './mfa.service.js';
 import { PasswordService } from './password.service.js';
 import { TokenService } from './token.service.js';
 
@@ -51,6 +52,9 @@ const PUBLIC_FIELDS = {
   role: true,
   status: true,
   mustChangePassword: true,
+  // Whether they hold a second factor, never the secret behind it. An
+  // administrator needs to see who has one to know who to chase.
+  mfaEnrolledAt: true,
   lastLoginAt: true,
   createdAt: true,
 } as const;
@@ -62,6 +66,7 @@ export class UsersService {
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
     private readonly mail: MailService,
+    private readonly mfa: MfaService,
     private readonly config: ConfigService,
   ) {}
 
@@ -190,6 +195,29 @@ export class UsersService {
     await this.sendCredentials(user.email, user.name, temporaryPassword);
 
     return { id, message: 'A temporary password has been emailed to them.' };
+  }
+
+  /**
+   * Clears somebody's authenticator so they can set up a new one.
+   *
+   * Every session of theirs goes with it. Whoever asked for this may be the
+   * person who lost the phone — or the person who found it, and a live session
+   * left running would be exactly what the reset was supposed to close.
+   */
+  async resetMfa(id: string) {
+    const user = await this.prisma.db.user.findUnique({
+      where: { id },
+      select: { id: true, name: true, email: true },
+    });
+    if (!user) throw new NotFoundProblem('That user');
+
+    await this.mfa.reset(id);
+    await this.tokens.revokeAllForUser(id);
+
+    return {
+      id,
+      message: `${user.name} will be asked to set up a new authenticator next time they sign in.`,
+    };
   }
 
   private async assertNotLastSuperAdmin(id: string): Promise<void> {

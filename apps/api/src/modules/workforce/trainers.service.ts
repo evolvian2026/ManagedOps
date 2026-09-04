@@ -14,7 +14,7 @@ import { paginate, toPrismaPage } from '../../common/pagination.js';
 import { DomainRuleProblem, ForbiddenProblem, NotFoundProblem } from '../../common/errors.js';
 import { scopedWhere, trainerScope } from '../../common/scope.js';
 import { AuditService } from '../audit/audit.service.js';
-import { MailService } from '../notifications/mail.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { PasswordService } from '../identity/password.service.js';
 import type { AuthenticatedUser } from '../../common/decorators/index.js';
 import { can } from '@managedops/shared';
@@ -46,7 +46,7 @@ export class TrainersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly passwords: PasswordService,
-    private readonly mail: MailService,
+    private readonly notifications: NotificationsService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
   ) {}
@@ -159,7 +159,13 @@ export class TrainersService {
     return this.prisma.db.trainer.update({
       where: { id },
       data: {
-        ...(input.phone !== undefined ? { phone: input.phone } : {}),
+        // The number lives in two places for two reasons — the trainer record
+        // is what onboarding captured, the user record is what the messaging
+        // layer sends to — so a correction here has to reach both. One updated
+        // without the other is a reminder going to somebody's old number.
+        ...(input.phone !== undefined
+          ? { phone: input.phone, user: { update: { phone: input.phone } } }
+          : {}),
         ...(input.personalEmail !== undefined ? { personalEmail: input.personalEmail } : {}),
         ...(input.workEmail !== undefined ? { workEmail: input.workEmail } : {}),
         ...(input.joiningDate !== undefined ? { joiningDate: new Date(input.joiningDate) } : {}),
@@ -308,7 +314,7 @@ export class TrainersService {
 
     // Sent after the transaction commits: emailing credentials for a hire that
     // then failed to save would be worse than a missing email.
-    await this.sendCredentials(candidate.name, personalEmail, temporaryPassword);
+    await this.sendCredentials(userId, candidate.name, personalEmail, temporaryPassword);
 
     await this.audit.record({
       actorUserId: actor.userId,
@@ -377,7 +383,12 @@ export class TrainersService {
       },
     });
 
-    await this.sendCredentials(trainer.user.name, trainer.personalEmail, temporaryPassword);
+    await this.sendCredentials(
+      trainer.userId,
+      trainer.user.name,
+      trainer.personalEmail,
+      temporaryPassword,
+    );
     return {
       id,
       message: `A new temporary password has been emailed to ${trainer.personalEmail}.`,
@@ -447,23 +458,42 @@ export class TrainersService {
     }));
   }
 
+  /**
+   * The one message a new joiner cannot afford to miss.
+   *
+   * Routed through `notify` rather than straight to the mailer so all three
+   * channels come from one place: the password goes by email, where it is at
+   * least addressed to one inbox, and the phone gets only a nudge to go and
+   * read it. This is also what finally emits `credentials_issued`, which was a
+   * notification type nothing raised.
+   */
   private async sendCredentials(
+    userId: string,
     name: string,
     email: string,
     temporaryPassword: string,
   ): Promise<void> {
     const webBaseUrl = this.config.getOrThrow<string>('webBaseUrl');
-    await this.mail.send({
-      to: email,
-      subject: 'Welcome to ManagedOps — your account',
-      text:
-        `Hello ${name},\n\n` +
-        `Welcome aboard. Your ManagedOps account is ready.\n\n` +
-        `Sign in at: ${webBaseUrl}\n` +
-        `Email: ${email}\n` +
-        `Temporary password: ${temporaryPassword}\n\n` +
-        `You will be asked to choose your own password the first time you sign in.\n` +
-        `After that, please upload your documents — the checklist is on your profile.\n`,
+    await this.notifications.notify({
+      userIds: [userId],
+      type: 'credentials_issued',
+      title: 'Your ManagedOps account is ready',
+      body: 'Your sign-in details have been emailed to you.',
+      entityType: 'User',
+      entityId: userId,
+      email: {
+        to: email,
+        subject: 'Welcome to ManagedOps — your account',
+        text:
+          `Hello ${name},\n\n` +
+          `Welcome aboard. Your ManagedOps account is ready.\n\n` +
+          `Sign in at: ${webBaseUrl}\n` +
+          `Email: ${email}\n` +
+          `Temporary password: ${temporaryPassword}\n\n` +
+          `You will be asked to choose your own password the first time you sign in.\n` +
+          `After that, please upload your documents — the checklist is on your profile.\n`,
+      },
+      mobile: { template: 'account_ready', values: { name } },
     });
   }
 }
