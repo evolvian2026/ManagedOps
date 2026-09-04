@@ -6,6 +6,7 @@ import {
   computeLeaveBalance,
   countLeaveDays,
   eachDate,
+  formatIstDate,
   toIstDateString,
   type CreateLeaveInput,
   type DecideLeaveInput,
@@ -309,10 +310,13 @@ export class LeaveService {
       }
     });
 
+    // Formatted for a person, not for a wire: the in-app line and the message
+    // to their phone are both read, and "2026-09-11" is not how the rest of
+    // the product writes a date.
     const dates =
       toIstDateString(request.startDate) === toIstDateString(request.endDate)
-        ? toIstDateString(request.startDate)
-        : `${toIstDateString(request.startDate)} to ${toIstDateString(request.endDate)}`;
+        ? formatIstDate(request.startDate)
+        : `${formatIstDate(request.startDate)} to ${formatIstDate(request.endDate)}`;
 
     await this.notifications.notify({
       userIds: [request.assignment.trainer.user.id],

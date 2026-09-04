@@ -1236,9 +1236,9 @@ matrix marks sensitive now hold a second factor.
 
 | Check                                   | Result      |
 | --------------------------------------- | ----------- |
-| Shared contract tests                   | 250 passing |
+| Shared contract tests                   | 252 passing |
 | API integration tests (real PostgreSQL) | 752 passing |
-| Browser tests (desktop + mobile)        | 167 passing |
+| Browser tests (desktop + mobile)        | 168 passing |
 | Typecheck, formatting, both builds      | Clean       |
 
 Every screen in §9.4 and §9.5 is implemented. There are no placeholders left.

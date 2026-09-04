@@ -115,10 +115,23 @@ export async function createHarness(): Promise<Harness> {
     },
 
     async signIn(email: string, password = TEST_PASSWORD): Promise<Session> {
-      const response = await http()
-        .post('/api/v1/auth/login')
-        .send({ email, password })
-        .expect(200);
+      const response = await http().post('/api/v1/auth/login').send({ email, password });
+
+      // Says what the server actually refused with. A bare `.expect(200)` here
+      // reports "expected 200, got 409" and nothing else, which is a long way
+      // from the problem in a suite where every test signs in first.
+      if (response.status !== 200) {
+        throw new Error(
+          `Sign-in for ${email} returned ${response.status}: ${JSON.stringify(response.body)}`,
+        );
+      }
+      // A privileged account under enforced MFA gets a challenge, not a
+      // session. Callers that want one are in mfa.test.ts and drive it there.
+      if (!response.body.accessToken) {
+        throw new Error(
+          `Sign-in for ${email} returned no session: ${JSON.stringify(response.body)}`,
+        );
+      }
 
       const cookies = (response.headers['set-cookie'] as unknown as string[]) ?? [];
       const refreshCookie = cookies.find((c) => c.startsWith('managedops_refresh=')) ?? '';

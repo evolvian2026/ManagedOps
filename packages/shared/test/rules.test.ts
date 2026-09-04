@@ -13,6 +13,7 @@ import {
   needsHighValueApproval,
   nonWorkingReason,
   parseClockTime,
+  formatIstDate,
   toIstDateString,
 } from '../src/rules.js';
 
@@ -223,5 +224,19 @@ describe('the reimbursement approval limit', () => {
 
   it('sends anything above it to a manager', () => {
     expect(needsHighValueApproval(REIMBURSEMENT_HR_LIMIT + 1)).toBe(true);
+  });
+});
+
+describe('a date in a sentence', () => {
+  it('reads the way the rest of the product writes one', () => {
+    expect(formatIstDate('2026-10-11T00:00:00Z')).toBe('11 Oct 2026');
+    // en-IN abbreviates September to "Sept", which is what every date in the
+    // interface already shows — matching it matters more than the extra letter.
+    expect(formatIstDate('2026-09-11T00:00:00Z')).toBe('11 Sept 2026');
+  });
+
+  it('is rendered in IST, so a UTC instant late in the day is not yesterday', () => {
+    // 20:00 UTC on the 11th is 01:30 IST on the 12th.
+    expect(formatIstDate('2026-10-11T20:00:00Z')).toBe('12 Oct 2026');
   });
 });

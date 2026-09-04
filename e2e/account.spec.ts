@@ -42,6 +42,17 @@ test.describe('how we reach you', () => {
     await expect(card).toContainText('When a leave request of yours is approved or rejected');
   });
 
+  test('does not promise an administrator messages they will never get', async ({ page }) => {
+    await signedIn(page, HR);
+    await page.goto('/my/account');
+
+    // Every template is addressed to a trainer about their own work. Listing
+    // them to HR advertised a channel that would stay silent.
+    const card = page.getByRole('region', { name: 'How we reach you' });
+    await expect(card).toContainText('nothing is currently sent to your phone');
+    await expect(card).not.toContainText('When a leave request of yours');
+  });
+
   test('refuses a number nothing could send to, and says why', async ({ page }) => {
     await signedIn(page, TRAINER);
     await page.goto('/my/account');

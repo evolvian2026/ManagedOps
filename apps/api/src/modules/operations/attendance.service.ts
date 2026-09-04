@@ -5,6 +5,7 @@ import {
   attendanceStatusFromPunches,
   canTransition,
   nonWorkingReason,
+  formatIstDate,
   toIstDateString,
   type AttendanceQuery,
   type CorrectionQuery,
@@ -544,7 +545,7 @@ export class AttendanceService {
         template: 'correction_decided',
         values: {
           name: correction.requestedBy.name,
-          date: toIstDateString(record.workDate),
+          date: formatIstDate(record.workDate),
           outcome: input.decision === 'approved' ? 'approved' : 'rejected',
         },
       },

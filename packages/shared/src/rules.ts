@@ -57,6 +57,23 @@ export function toIstDateString(instant: Date): string {
 }
 
 /** Minutes past midnight IST, used to decide present vs late. */
+/**
+ * A date as a person reads it — "11 Sep 2026".
+ *
+ * `toIstDateString` gives the machine form, which is right for a wire format
+ * and wrong in a sentence somebody receives on their phone. Both exist because
+ * they are for different readers.
+ */
+export function formatIstDate(instant: Date | string): string {
+  const date = typeof instant === 'string' ? new Date(instant) : instant;
+  return date.toLocaleDateString('en-IN', {
+    timeZone: OPERATIONAL_TIMEZONE,
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 export function istMinutesOfDay(instant: Date): number {
   const shifted = new Date(instant.getTime() + IST_OFFSET_MINUTES * 60_000);
   return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();

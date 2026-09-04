@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Field } from '../../components/ui';
 import { ErrorState, LoadingState } from '../../components/states';
 import { api, errorMessage } from '../../lib/api';
+import { useAuth } from '../auth/auth-context';
 
 interface ContactPreferences {
   phone: string | null;
@@ -38,6 +39,7 @@ function useUpdateContactPreferences() {
  * without anybody remembering to come back and add a line.
  */
 export function ContactPreferences() {
+  const { user } = useAuth();
   const preferences = useContactPreferences();
   const update = useUpdateContactPreferences();
   const [phone, setPhone] = useState<string | null>(null);
@@ -48,6 +50,10 @@ export function ContactPreferences() {
   }
 
   const current = preferences.data;
+  // Every message in the catalogue is addressed to a trainer about their own
+  // work. Listing them to an administrator promised messages that would never
+  // arrive, which is worse than saying nothing.
+  const receivesMessages = Boolean(user?.trainerId);
   // Null until they type: the stored number is shown masked, and starting the
   // field with the mask would have them save the dots back.
   const editing = phone !== null;
@@ -123,14 +129,23 @@ export function ContactPreferences() {
             </Button>
           </div>
 
-          <p className="mt-4 text-xs font-semibold tracking-wide text-ink-soft uppercase">
-            What we would send
-          </p>
-          <ul className="mt-2 space-y-1 text-sm text-ink-soft">
-            {current.purposes.map((purpose) => (
-              <li key={purpose}>· {purpose}</li>
-            ))}
-          </ul>
+          {receivesMessages ? (
+            <>
+              <p className="mt-4 text-xs font-semibold tracking-wide text-ink-soft uppercase">
+                What we would send
+              </p>
+              <ul className="mt-2 space-y-1 text-sm text-ink-soft">
+                {current.purposes.map((purpose) => (
+                  <li key={purpose}>· {purpose}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="mt-4 text-sm text-ink-soft">
+              These messages go to trainers about their own work, so nothing is currently sent to
+              your phone. Your number is here so colleagues can reach you.
+            </p>
+          )}
         </div>
 
         {update.isError ? (
