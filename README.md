@@ -151,8 +151,29 @@ left, and `marginPercent` is that as a share of revenue.
 
 **An assignment with no rate is `unbilled`, not a loss.** Internal work exists,
 and booking it at a 100% loss would make every roll-up above it meaningless — so
-its cost is counted, its revenue is absent rather than zero, and the report says
-how many such assignments are in the figure you are looking at.
+its cost is counted and its revenue is absent rather than zero.
+
+**But "no rate" is two different answers, and the report separates them.** A
+null day rate used to mean both _internal work that will never be billed_ and
+_nobody has agreed a rate yet_. One is finished business; the other is money
+going uncollected. Identical in the data, they forced the screen to warn about
+every unrated assignment forever — including the deliberate ones — and a warning
+that can never be cleared is one people stop reading.
+
+So an assignment now carries a `notBilledReason` (with who decided, and when),
+and its billing state is **derived** from the two columns rather than stored as a
+third: `rated`, `not_billed`, or `undecided`. A database CHECK refuses a row
+holding both a rate and a reason, because they are contradictory answers to one
+question; setting either clears the other. Only `undecided` is counted as a gap,
+so the margin stops being "the floor rather than the answer" once every
+assignment has been accounted for — by pricing it or by writing off the reason.
+
+**The report is also actionable, not just diagnostic.** A margin row is a
+roll-up and a rate lives on an assignment, so the row opens onto the assignments
+behind it — priced by the same pass the roll-up uses, so the drill-down always
+sums to the figure it explains — and the rate is settable there. The warning
+about unrated work leads straight to exactly the assignments it is complaining
+about.
 
 The arithmetic lives in `packages/shared/src/rules.ts` (`tallyDays`,
 `computeMargin`) and nowhere else; the API only feeds it facts. Every grouping —
@@ -607,6 +628,6 @@ Every screen in the specification is implemented; there are no placeholders.
 
 | Suite                             | Count |
 | --------------------------------- | ----- |
-| Shared contracts                  | 269   |
-| API integration (real PostgreSQL) | 768   |
-| Browser (desktop + mobile)        | 172   |
+| Shared contracts                  | 279   |
+| API integration (real PostgreSQL) | 777   |
+| Browser (desktop + mobile)        | 175   |

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { computeMargin, tallyDays } from '../src/rules.js';
+import { billingStateOf, computeMargin, isBillingUndecided, tallyDays } from '../src/rules.js';
+import { setBillRateSchema } from '../src/schemas/commercial.js';
 
 /**
  * The accounting judgements, in the only place they are made.
@@ -143,5 +144,78 @@ describe('computing a margin', () => {
     const result = computeMargin({ ...base, salaryAnnual: null });
     expect(result.salaryCost).toBe(0);
     expect(result.margin).toBe(130_000);
+  });
+});
+
+/**
+ * Which of the three billing answers an assignment is on.
+ *
+ * The distinction this exists for: a null day rate used to mean both "internal
+ * work, never billed" and "nobody has agreed a rate". One is finished business
+ * and the other is money going uncollected, and a screen that cannot tell them
+ * apart has to warn about both forever.
+ */
+describe('how an assignment is billed', () => {
+  it('is rated when there is a rate', () => {
+    expect(billingStateOf({ dayRate: 6500, notBilledReason: null })).toBe('rated');
+  });
+
+  it('is undecided when there is neither a rate nor a reason', () => {
+    expect(billingStateOf({ dayRate: null, notBilledReason: null })).toBe('undecided');
+  });
+
+  it('is settled once somebody says why it is not billed', () => {
+    expect(billingStateOf({ dayRate: null, notBilledReason: 'Internal curriculum work.' })).toBe(
+      'not_billed',
+    );
+  });
+
+  it('treats a rate of zero as a rate, not as an absence of one', () => {
+    // Agreeing to deliver at no charge is a decision; it is not the same as
+    // never having priced the work, and rounding it to "undecided" would put
+    // it back in the queue of things to chase.
+    expect(billingStateOf({ dayRate: 0, notBilledReason: null })).toBe('rated');
+  });
+
+  it('ignores an empty reason, which is not a reason', () => {
+    expect(billingStateOf({ dayRate: null, notBilledReason: '' })).toBe('undecided');
+  });
+
+  it('names only the undecided ones as needing something done', () => {
+    expect(isBillingUndecided({ dayRate: null, notBilledReason: null })).toBe(true);
+    expect(isBillingUndecided({ dayRate: null, notBilledReason: 'Goodwill.' })).toBe(false);
+    expect(isBillingUndecided({ dayRate: 6500, notBilledReason: null })).toBe(false);
+  });
+});
+
+describe('deciding how a client is charged', () => {
+  it('refuses a rate and a reason not to bill in the same breath', () => {
+    // Contradictory answers to one question. The database refuses the row too;
+    // this is the refusal that reaches the person while they can still fix it.
+    const result = setBillRateSchema.safeParse({
+      billRatePerDay: 6500,
+      notBilledReason: 'Internal work.',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('insists a decision not to bill says why', () => {
+    expect(
+      setBillRateSchema.safeParse({ billRatePerDay: null, notBilledReason: 'no' }).success,
+    ).toBe(false);
+  });
+
+  it('takes a rate on its own, and a reason on its own', () => {
+    expect(setBillRateSchema.safeParse({ billRatePerDay: 6500 }).success).toBe(true);
+    expect(
+      setBillRateSchema.safeParse({ billRatePerDay: null, notBilledReason: 'Internal curriculum.' })
+        .success,
+    ).toBe(true);
+  });
+
+  it('still allows clearing a rate without deciding anything', () => {
+    // Undoing a rate is not the same as declaring the work unbilled, and
+    // forcing a reason here would make a correction impossible to record.
+    expect(setBillRateSchema.safeParse({ billRatePerDay: null }).success).toBe(true);
   });
 });

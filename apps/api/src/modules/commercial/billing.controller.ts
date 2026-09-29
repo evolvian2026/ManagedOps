@@ -1,7 +1,13 @@
 import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { marginQuerySchema, uuidSchema, type MarginQuery } from '@managedops/shared';
+import {
+  marginAssignmentsQuerySchema,
+  marginQuerySchema,
+  uuidSchema,
+  type MarginAssignmentsQuery,
+  type MarginQuery,
+} from '@managedops/shared';
 import {
   Audited,
   CurrentUser,
@@ -29,6 +35,16 @@ export class BillingController {
     return this.billing.report(query, user);
   }
 
+  @Get('margin/assignments')
+  @RequireCapability('billing.read')
+  @ApiOperation({ summary: 'The assignments behind one row of the margin report' })
+  marginAssignments(
+    @Query(validate(marginAssignmentsQuerySchema)) query: MarginAssignmentsQuery,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.billing.assignments(query, user);
+  }
+
   @Get('margin/export.csv')
   @RequireCapability('billing.read')
   @ApiOperation({ summary: 'Export the margin report as CSV' })
@@ -48,7 +64,10 @@ export class BillingController {
       { header: 'total_cost_inr', value: (row) => row.cost },
       { header: 'margin_inr', value: (row) => row.margin },
       { header: 'margin_percent', value: (row) => row.marginPercent },
-      { header: 'assignments_without_a_rate', value: (row) => row.unbilledAssignments },
+      { header: 'assignments_awaiting_a_rate', value: (row) => row.unbilledAssignments },
+      // Separately, because one of these is work to do and the other is a
+      // decision already taken. A single count of "unbilled" hides that.
+      { header: 'assignments_not_billed_by_choice', value: (row) => row.notBilledAssignments },
     ]);
     sendCsv(response, `managedops-margin-${report.from}-to-${report.to}.csv`, body);
   }

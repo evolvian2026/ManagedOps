@@ -4,6 +4,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/states';
 import { formatInr } from '../onboarding/format';
 import { downloadCsv } from '../exit/api';
 import { currentMonth, marginQuery, useMargin, type GroupBy, type MarginRow } from './api';
+import { MarginAssignmentsDialog } from './margin-assignments';
 
 const GROUPINGS: { value: GroupBy; label: string }[] = [
   { value: 'project', label: 'By project' },
@@ -27,6 +28,13 @@ export function MarginPage() {
   const filters = { from, to, groupBy };
   const report = useMargin(filters);
   const totals = report.data?.totals;
+
+  // What the drill-down is open on: a row the user clicked, or the set of
+  // assignments the banner is complaining about. Null closes it.
+  const [openOn, setOpenOn] = useState<{
+    row: { key: string; label: string } | null;
+    undecidedOnly: boolean;
+  } | null>(null);
 
   return (
     <>
@@ -100,9 +108,25 @@ export function MarginPage() {
           </p>
           <p className="mt-0.5 text-ink-soft">
             Their cost is counted and their revenue is not, so the margin above is the floor rather
-            than the answer. Set a rate on the assignment, or leave it unbilled deliberately.
+            than the answer. Set a rate, or record that the work is deliberately not billed.
           </p>
+          <Button
+            variant="secondary"
+            className="mt-2"
+            onClick={() => setOpenOn({ row: null, undecidedOnly: true })}
+          >
+            Show me which
+          </Button>
         </div>
+      ) : totals && totals.notBilledAssignments > 0 ? (
+        // Everything is accounted for, so the figure above is the answer. Said
+        // once, plainly — the alternative is a banner that never clears, which
+        // is a banner nobody reads.
+        <p className="mb-5 text-sm text-ink-soft">
+          Every assignment is accounted for. {totals.notBilledAssignments} of them{' '}
+          {totals.notBilledAssignments === 1 ? 'is' : 'are'} deliberately not billed, so their cost
+          is counted and no revenue is expected against it.
+        </p>
       ) : null}
 
       {report.isPending ? (
@@ -129,24 +153,50 @@ export function MarginPage() {
           }
         >
           {report.data.rows.map((row) => (
-            <MarginTableRow key={row.key} row={row} />
+            <MarginTableRow
+              key={row.key}
+              row={row}
+              onOpen={() =>
+                setOpenOn({ row: { key: row.key, label: row.label }, undecidedOnly: false })
+              }
+            />
           ))}
         </Table>
       )}
+
+      <MarginAssignmentsDialog
+        open={openOn !== null}
+        onClose={() => setOpenOn(null)}
+        filters={filters}
+        row={openOn?.row ?? null}
+        undecidedOnly={openOn?.undecidedOnly ?? false}
+      />
     </>
   );
 }
 
-function MarginTableRow({ row }: { row: MarginRow }) {
+function MarginTableRow({ row, onOpen }: { row: MarginRow; onOpen: () => void }) {
   return (
     <tr>
       <Td>
-        <div className="font-medium text-ink">{row.label}</div>
+        {/* The label is the way in: a roll-up is only actionable through the
+            assignments underneath it, and this is the shortest route there. */}
+        <button
+          type="button"
+          onClick={onOpen}
+          className="rounded-sm text-left font-medium text-ink underline decoration-dotted underline-offset-4 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          {row.label}
+        </button>
         <div className="flex items-center gap-2">
           {row.sublabel ? (
             <span className="font-mono text-xs text-ink-soft">{row.sublabel}</span>
           ) : null}
-          {row.unbilled ? <Badge tone="neutral">Unbilled</Badge> : null}
+          {row.unbilledAssignments > 0 ? (
+            <Badge tone="pending">{row.unbilledAssignments} without a rate</Badge>
+          ) : row.unbilled ? (
+            <Badge tone="neutral">Not billed</Badge>
+          ) : null}
         </div>
       </Td>
       <Td className="text-right tabular-nums text-ink-soft">{row.billableDays}</Td>

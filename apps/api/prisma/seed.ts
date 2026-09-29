@@ -166,8 +166,10 @@ async function main(): Promise<void> {
       allocationPercent: 60,
       freesUpInDays: null,
     },
-    // Not billed to the client: internal curriculum work, which is what gives
-    // the margin report an "unbilled" row rather than a uniform one.
+    // No rate agreed yet — internal curriculum work that nobody has priced or
+    // formally written off. Left undecided on purpose: it is what gives the
+    // margin report something to act on, and recording the decision is the
+    // demonstration.
     {
       name: 'Meera Krishnan',
       email: 'meera.krishnan@managedops.local',
@@ -360,9 +362,9 @@ async function main(): Promise<void> {
         status: 'active',
         allocationPercent: trainer.allocationPercent,
         leaveAllowanceDays: new Prisma.Decimal(3),
-        // The lead is billed above the contract rate and one trainer is not
-        // billed at all, so the margin report has both a premium and an
-        // unbilled row to show rather than one uniform number.
+        // The lead is billed above the contract rate and one trainer has no
+        // rate at all, so the margin report has both a premium and an
+        // unresolved row to show rather than one uniform number.
         billRatePerDay: trainer.lead
           ? new Prisma.Decimal(8500)
           : trainer.unbilled

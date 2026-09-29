@@ -1,5 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { computeMargin, tallyDays, type Margin, type MarginQuery } from '@managedops/shared';
+import {
+  billingStateOf,
+  computeMargin,
+  tallyDays,
+  type BillingState,
+  type Margin,
+  type MarginAssignmentsQuery,
+  type MarginQuery,
+} from '@managedops/shared';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { WorkingDaysService } from '../../common/working-days.js';
 import { NotFoundProblem } from '../../common/errors.js';
@@ -12,8 +20,16 @@ export interface MarginRow extends Margin {
   sublabel: string | null;
   billableDays: number;
   payableDays: number;
-  /** Assignments in this row with no agreed rate, so revenue is understated. */
+  /**
+   * Assignments here with no rate and no decision — the actionable gap.
+   *
+   * Only these understate the margin in a way anybody can do something about,
+   * which is why the deliberate ones are counted separately rather than
+   * lumped in. A screen that cannot tell them apart has to warn about both.
+   */
   unbilledAssignments: number;
+  /** Assignments somebody has deliberately marked as not billed. */
+  notBilledAssignments: number;
 }
 
 export interface MarginReport {
@@ -21,7 +37,11 @@ export interface MarginReport {
   to: string;
   groupBy: MarginQuery['groupBy'];
   rows: MarginRow[];
-  totals: Margin & { billableDays: number; unbilledAssignments: number };
+  totals: Margin & {
+    billableDays: number;
+    unbilledAssignments: number;
+    notBilledAssignments: number;
+  };
 }
 
 /**
@@ -42,7 +62,92 @@ export class BillingService {
 
   async report(query: MarginQuery, user: AuthenticatedUser): Promise<MarginReport> {
     const { from, to } = resolvePeriod(query);
+    const priced = await this.priceAssignments(query, user, from, to);
 
+    const grouped = new Map<string, MarginRow>();
+    for (const { assignment, margin, tally, billing } of priced) {
+      const bucket = this.bucketFor(query.groupBy, assignment);
+      const existing = grouped.get(bucket.key);
+      grouped.set(
+        bucket.key,
+        existing ? add(existing, margin, tally, billing) : make(bucket, margin, tally, billing),
+      );
+    }
+
+    const rows = [...grouped.values()].sort((a, b) => b.margin - a.margin);
+    return { from, to, groupBy: query.groupBy, rows, totals: totalsOf(rows) };
+  }
+
+  /**
+   * The assignments behind one row of the report.
+   *
+   * Priced by the same pass the roll-up uses, so what this lists always sums to
+   * what the row above it showed. Running a second, simpler query here would be
+   * quicker to write and would eventually disagree with the number it claims to
+   * explain, which is worse than not offering the drill-down at all.
+   */
+  async assignments(query: MarginAssignmentsQuery, user: AuthenticatedUser) {
+    const { from, to } = resolvePeriod(query);
+    const priced = await this.priceAssignments(
+      { ...query, clientId: undefined, projectId: undefined },
+      user,
+      from,
+      to,
+    );
+
+    const rows = priced
+      .filter(({ assignment }) => {
+        if (query.key && this.bucketFor(query.groupBy, assignment).key !== query.key) return false;
+        return !query.undecidedOnly || billingStateOf(rateOf(assignment)) === 'undecided';
+      })
+      .map(({ assignment, margin, tally, billing }) => ({
+        assignmentId: assignment.id,
+        trainerId: assignment.trainer.id,
+        trainerName: assignment.trainer.user.name,
+        employeeCode: assignment.trainer.employeeCode,
+        projectId: assignment.project.id,
+        projectName: assignment.project.name,
+        projectCode: assignment.project.code,
+        clientName: assignment.project.client.name,
+        billRatePerDay:
+          assignment.billRatePerDay == null ? null : Number(assignment.billRatePerDay),
+        notBilledReason: assignment.notBilledReason,
+        billing,
+        billableDays: tally.billableDays,
+        revenue: margin.revenue,
+        salaryCost: margin.salaryCost,
+        reimbursements: margin.reimbursements,
+        cost: margin.cost,
+        margin: margin.margin,
+        marginPercent: margin.marginPercent,
+      }))
+      // Undecided first: they are the only ones there is anything to do about,
+      // and the thinnest margins after them.
+      .sort((a, b) => {
+        if (a.billing !== b.billing) {
+          if (a.billing === 'undecided') return -1;
+          if (b.billing === 'undecided') return 1;
+        }
+        return a.margin - b.margin;
+      });
+
+    return { from, to, groupBy: query.groupBy, key: query.key ?? null, rows };
+  }
+
+  /**
+   * Every assignment overlapping the period, with its margin worked out.
+   *
+   * One query and one arithmetic pass, shared by the roll-up and the
+   * drill-down. The unit is the assignment because that is where a rate and a
+   * person meet, and computing here rather than per grouping is what makes the
+   * project total and the trainer total agree.
+   */
+  private async priceAssignments(
+    query: { groupBy: MarginQuery['groupBy']; clientId?: string; projectId?: string },
+    user: AuthenticatedUser,
+    from: string,
+    to: string,
+  ) {
     // Scoped through the project, so a role that only sees some projects only
     // ever sees their commercials. Today only Manager and Super Admin hold
     // `billing.read` and both are unscoped, but the predicate is applied rather
@@ -60,6 +165,7 @@ export class BillingService {
       select: {
         id: true,
         billRatePerDay: true,
+        notBilledReason: true,
         project: {
           select: {
             id: true,
@@ -106,9 +212,7 @@ export class BillingService {
     );
     const months = monthsBetween(from, to);
 
-    const grouped = new Map<string, MarginRow>();
-
-    for (const assignment of assignments) {
+    return assignments.map((assignment) => {
       const tally = tallyDays(assignment.attendance.map((day) => day.status));
       const reimbursements = assignment.reimbursements.reduce(
         (total, claim) => total + Number(claim.amount),
@@ -117,7 +221,7 @@ export class BillingService {
 
       const margin = computeMargin({
         billableDays: tally.billableDays,
-        dayRate: assignment.billRatePerDay == null ? null : Number(assignment.billRatePerDay),
+        dayRate: rateOf(assignment).dayRate,
         salaryAnnual:
           assignment.trainer.salaryAnnual == null ? null : Number(assignment.trainer.salaryAnnual),
         payableDays: tally.payableDays,
@@ -126,16 +230,15 @@ export class BillingService {
         reimbursements,
       });
 
-      const bucket = this.bucketFor(query.groupBy, assignment);
-      const existing = grouped.get(bucket.key);
-      grouped.set(
-        bucket.key,
-        existing ? add(existing, margin, tally) : make(bucket, margin, tally),
-      );
-    }
-
-    const rows = [...grouped.values()].sort((a, b) => b.margin - a.margin);
-    return { from, to, groupBy: query.groupBy, rows, totals: totalsOf(rows) };
+      return {
+        assignment,
+        margin,
+        tally,
+        // Derived from the two columns, never read off a stored third: an
+        // assignment is rated, deliberately not billed, or nobody has said.
+        billing: billingStateOf(rateOf(assignment)),
+      };
+    });
   }
 
   /** One project's margin broken down by the trainers who delivered it. */
@@ -181,6 +284,23 @@ export class BillingService {
 
 /* ----------------------------------------------------------------- helpers */
 
+/**
+ * The two columns that together say how an assignment is billed.
+ *
+ * In one place because the margin arithmetic and the state derivation must read
+ * the same values: a Prisma Decimal that reaches `computeMargin` un-narrowed
+ * would be truthy and price the work at NaN per day.
+ */
+function rateOf(assignment: { billRatePerDay: unknown; notBilledReason: string | null }): {
+  dayRate: number | null;
+  notBilledReason: string | null;
+} {
+  return {
+    dayRate: assignment.billRatePerDay == null ? null : Number(assignment.billRatePerDay),
+    notBilledReason: assignment.notBilledReason,
+  };
+}
+
 function resolvePeriod(query: MarginQuery): { from: string; to: string } {
   if (query.from && query.to) return { from: query.from, to: query.to };
 
@@ -213,13 +333,15 @@ function make(
   bucket: { key: string; label: string; sublabel: string | null },
   margin: Margin,
   tally: { billableDays: number; payableDays: number },
+  billing: BillingState,
 ): MarginRow {
   return {
     ...bucket,
     ...margin,
     billableDays: tally.billableDays,
     payableDays: tally.payableDays,
-    unbilledAssignments: margin.unbilled ? 1 : 0,
+    unbilledAssignments: billing === 'undecided' ? 1 : 0,
+    notBilledAssignments: billing === 'not_billed' ? 1 : 0,
   };
 }
 
@@ -235,6 +357,7 @@ function add(
   row: MarginRow,
   margin: Margin,
   tally: { billableDays: number; payableDays: number },
+  billing: BillingState,
 ): MarginRow {
   const revenue = round2(row.revenue + margin.revenue);
   const salaryCost = round2(row.salaryCost + margin.salaryCost);
@@ -253,7 +376,8 @@ function add(
     unbilled: row.unbilled && margin.unbilled,
     billableDays: round2(row.billableDays + tally.billableDays),
     payableDays: round2(row.payableDays + tally.payableDays),
-    unbilledAssignments: row.unbilledAssignments + (margin.unbilled ? 1 : 0),
+    unbilledAssignments: row.unbilledAssignments + (billing === 'undecided' ? 1 : 0),
+    notBilledAssignments: row.notBilledAssignments + (billing === 'not_billed' ? 1 : 0),
   };
 }
 
@@ -273,6 +397,7 @@ function totalsOf(rows: MarginRow[]): MarginReport['totals'] {
     unbilled: rows.length > 0 && rows.every((row) => row.unbilled),
     billableDays: round2(rows.reduce((sum, row) => sum + row.billableDays, 0)),
     unbilledAssignments: rows.reduce((sum, row) => sum + row.unbilledAssignments, 0),
+    notBilledAssignments: rows.reduce((sum, row) => sum + row.notBilledAssignments, 0),
   };
 }
 

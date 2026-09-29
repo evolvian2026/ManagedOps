@@ -1232,13 +1232,17 @@ documents did not anticipate: §15.5 assumed email was enough to reach a contrac
 trainer, which it is not — six operational messages now also go to a phone over
 WhatsApp, falling back to SMS — and §10.1's password policy is not a sufficient
 guard on an account that can open every trainer's Aadhaar, so the roles the
-matrix marks sensitive now hold a second factor.
+matrix marks sensitive now hold a second factor. Two screens then grew the
+action their figures implied: the payroll register hands the month over and
+records that it went, and the margin report opens onto the assignments behind a
+row so an unpriced one can be priced — or written off with a reason, which is a
+distinction the schema could not previously hold.
 
 | Check                                   | Result      |
 | --------------------------------------- | ----------- |
-| Shared contract tests                   | 269 passing |
-| API integration tests (real PostgreSQL) | 768 passing |
-| Browser tests (desktop + mobile)        | 172 passing |
+| Shared contract tests                   | 279 passing |
+| API integration tests (real PostgreSQL) | 777 passing |
+| Browser tests (desktop + mobile)        | 175 passing |
 | Typecheck, formatting, both builds      | Clean       |
 
 Every screen in §9.4 and §9.5 is implemented. There are no placeholders left.

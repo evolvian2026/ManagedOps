@@ -303,6 +303,38 @@ export function tallyDays(statuses: readonly string[]): DayTally {
   };
 }
 
+/**
+ * How an assignment is billed — which is three answers, not two.
+ *
+ * A day rate of null used to mean both "this is internal work and will never
+ * be billed" and "nobody has agreed a rate yet". They look identical in the
+ * data and could not be less alike to act on: one is finished business, the
+ * other is money going uncollected. Collapsing them meant the margin screen
+ * had to warn about every unrated assignment forever, including the ones that
+ * were deliberate — and a warning that can never be cleared is one people stop
+ * reading.
+ *
+ * Derived from the two columns rather than stored as a third, so the state
+ * cannot drift out of step with the rate it describes.
+ */
+export type BillingState = 'rated' | 'not_billed' | 'undecided';
+
+export function billingStateOf(input: {
+  dayRate: number | null;
+  notBilledReason: string | null;
+}): BillingState {
+  if (input.dayRate != null) return 'rated';
+  return input.notBilledReason ? 'not_billed' : 'undecided';
+}
+
+/** True when the margin is understated because somebody has not decided yet. */
+export function isBillingUndecided(input: {
+  dayRate: number | null;
+  notBilledReason: string | null;
+}): boolean {
+  return billingStateOf(input) === 'undecided';
+}
+
 export interface MarginInput {
   /** Days delivered, from `tallyDays`. */
   billableDays: number;

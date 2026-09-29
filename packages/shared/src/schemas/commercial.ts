@@ -58,13 +58,34 @@ export type ClientQuery = z.infer<typeof clientQuerySchema>;
 /* ----------------------------------------------------------------- billing */
 
 /**
- * Setting what a client pays for one trainer's days.
+ * How one trainer's days on one assignment are billed.
  *
- * Explicitly nullable, because "this work is not billed" is a real answer and
- * has to be distinguishable from "nobody has said yet". Both arrive as null;
- * the difference is that one of them was chosen, which the audit trail records.
+ * Three answers, not two. A rate, or a stated decision not to bill this work
+ * at all, or — the state an assignment starts in — nobody has said yet. The
+ * first two are settled; only the third is money going uncollected, and the
+ * margin screen can only stop warning about the deliberate ones if the
+ * decision is recorded here rather than left in the audit trail.
+ *
+ * A reason is required to record that decision, and deliberately so: "not
+ * billed" with no explanation is indistinguishable a month later from nobody
+ * having got round to it, which is the very confusion this exists to end.
  */
-export const setBillRateSchema = z.object({ billRatePerDay: dayRateSchema.nullable() }).strict();
+export const setBillRateSchema = z
+  .object({
+    billRatePerDay: dayRateSchema.nullable(),
+    notBilledReason: z
+      .string()
+      .trim()
+      .min(4, 'Say why this work is not billed')
+      .max(280)
+      .nullable()
+      .optional(),
+  })
+  .strict()
+  .refine((value) => !(value.billRatePerDay != null && value.notBilledReason), {
+    message: 'An assignment is either billed at a rate or deliberately not billed, not both',
+    path: ['notBilledReason'],
+  });
 export type SetBillRateInput = z.infer<typeof setBillRateSchema>;
 
 /**
@@ -88,3 +109,33 @@ export const marginQuerySchema = z
     message: 'The end of the period cannot precede its start',
   });
 export type MarginQuery = z.infer<typeof marginQuerySchema>;
+
+/**
+ * The assignments behind one row of the margin report.
+ *
+ * A margin row is a roll-up and a rate lives on an assignment, so acting on a
+ * thin project means getting from the one to the other. `key` is whatever the
+ * row was keyed by — a project, a client or a trainer — which is why the
+ * grouping has to come with it rather than being guessed from the id.
+ *
+ * `undecidedOnly` serves the banner: it names a number of assignments with no
+ * rate and no decision, and this is the query that lists exactly those.
+ */
+export const marginAssignmentsQuerySchema = z
+  .object({
+    from: dateStringSchema.optional(),
+    to: dateStringSchema.optional(),
+    groupBy: z.enum(['project', 'trainer', 'client']).default('project'),
+    /** Omitted when the caller wants every assignment in the period. */
+    key: z.string().uuid().optional(),
+    undecidedOnly: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((value) => value === 'true'),
+  })
+  .strict()
+  .refine((value) => !value.from || !value.to || value.to >= value.from, {
+    path: ['to'],
+    message: 'The end of the period cannot precede its start',
+  });
+export type MarginAssignmentsQuery = z.infer<typeof marginAssignmentsQuerySchema>;

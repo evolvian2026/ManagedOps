@@ -90,13 +90,74 @@ test.describe('the margin report', () => {
     await expect(page.getByRole('table')).toContainText('Full Stack Bootcamp');
   });
 
-  test('says plainly that an unbilled assignment makes the figure a floor', async ({ page }) => {
+  test('says plainly that an unrated assignment makes the figure a floor', async ({ page }) => {
     await signIn(page, MANAGER);
     await page.goto('/margin');
 
-    // Seeded: one trainer does internal work at no rate.
+    // Seeded: one trainer's internal work has never been priced.
     await expect(page.getByText(/no agreed rate/)).toBeVisible();
     await expect(page.getByText(/the floor rather than the answer/)).toBeVisible();
+  });
+
+  test('names the assignment behind a thin row rather than only the total', async ({ page }) => {
+    await signIn(page, MANAGER);
+    await page.goto('/margin');
+
+    // The row is a roll-up; the rate that would fix it lives on an assignment.
+    await page.getByRole('button', { name: 'Full Stack Bootcamp — Spring Term' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('Meera Krishnan');
+    await expect(dialog).toContainText('No rate yet');
+    // The ones that can be acted on come first, whatever they earned.
+    await expect(dialog.getByRole('row').nth(1)).toContainText('Meera Krishnan');
+    // And the margin is in view, not off the edge behind a scrollbar: the
+    // point of drilling in is seeing that this one assignment is what makes
+    // the row thin. Its cost is counted and no revenue is recorded against it.
+    await expect(dialog.getByRole('row').nth(1)).toContainText('-₹27,692');
+  });
+
+  test('goes straight from the warning to what it is warning about', async ({ page }) => {
+    await signIn(page, MANAGER);
+    await page.goto('/margin');
+
+    await page.getByRole('button', { name: 'Show me which' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('Neither a rate nor a decision');
+    await expect(dialog).toContainText('Meera Krishnan');
+  });
+
+  // Drives the seeded data forward, like the recruitment specs: marking work
+  // deliberately unbilled is one-way by design — you cannot un-decide — so this
+  // runs after the tests that need the warning still showing, and the suite is
+  // run against a fresh seed.
+  test('clears the warning when the work is recorded as deliberately unbilled', async ({
+    page,
+  }) => {
+    await signIn(page, MANAGER);
+    await page.goto('/margin');
+    await expect(page.getByText(/the floor rather than the answer/)).toBeVisible();
+
+    await page.getByRole('button', { name: 'Show me which' }).click();
+    // Named, because deciding the rate opens a second dialog over this one.
+    const list = page.getByRole('dialog', { name: 'Assignments awaiting a rate' });
+    await list.getByRole('button', { name: 'No rate yet' }).click();
+
+    const decision = page.getByRole('dialog', { name: 'How is this billed?' });
+    await decision.getByRole('radio', { name: 'Not billed at all' }).check();
+    await decision.getByLabel('Why').fill('Internal curriculum work, absorbed into the retainer.');
+    await decision.getByRole('button', { name: 'Save', exact: true }).click();
+
+    // The list empties as the decision lands, then the screen behind it.
+    await expect(list).toContainText('Every assignment is accounted for');
+    await list.getByRole('button', { name: 'Close' }).click();
+
+    // The revenue has not moved — nothing was billed either way. What has moved
+    // is that there is no longer anything for anybody to do, so the warning
+    // that could never be cleared is gone.
+    await expect(page.getByText(/the floor rather than the answer/)).toBeHidden();
+    await expect(page.getByText(/1 of them is deliberately not billed/)).toBeVisible();
   });
 
   test('re-cuts the same money rather than asking a different question', async ({ page }) => {

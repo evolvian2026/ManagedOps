@@ -168,15 +168,25 @@ export function Table({
   head,
   children,
   caption,
+  compact = false,
 }: {
   head: ReactNode;
   children: ReactNode;
   caption?: string;
+  /**
+   * Drops the minimum width, for a table inside a modal.
+   *
+   * The minimum keeps a full-page table from squashing its columns into
+   * unreadable slivers. In a dialog it does the opposite: the table overflows
+   * the dialog and the last column — usually the one the dialog exists to
+   * show — sits off the edge behind a scrollbar nobody looks for.
+   */
+  compact?: boolean;
 }) {
   return (
     // Wide tables scroll inside their own container so the page never does.
     <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-      <table className="w-full min-w-[52rem] text-sm">
+      <table className={`w-full text-sm ${compact ? '' : 'min-w-[52rem]'}`}>
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <thead>
           <tr className="border-b border-line bg-surface-sunk text-left">{head}</tr>
@@ -268,18 +278,26 @@ export function Tabs<T extends string>({
   );
 }
 
-/** A modal for the short forms this section needs — schedule, screen, offer. */
+/**
+ * A modal for the short forms this section needs — schedule, screen, offer.
+ *
+ * `wide` is for the few that hold a table rather than a form: the default width
+ * is chosen so a form does not sprawl, and the same width squeezes a row of
+ * figures into something nobody can read across.
+ */
 export function Modal({
   open,
   title,
   description,
   onClose,
+  wide = false,
   children,
 }: {
   open: boolean;
   title: string;
   description?: string;
   onClose: () => void;
+  wide?: boolean;
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -299,7 +317,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-lg rounded-lg border border-line bg-surface shadow-lg"
+        className={`w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} rounded-lg border border-line bg-surface shadow-lg`}
       >
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>

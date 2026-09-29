@@ -339,6 +339,110 @@ describe('the margin report', () => {
     }
   });
 
+  it('stops counting an assignment as a gap once somebody decides not to bill it', async () => {
+    await resetDatabase(harness.prisma);
+    const managerUser = await harness.seedUser({ role: 'manager' });
+    await harness.seedUser({ role: 'hr' });
+    await harness.seedUser({ role: 'project_lead' });
+    await harness.seedUser({ role: 'trainer' });
+    manager = await harness.signIn(managerUser.email);
+    const built = await buildEngagement({ dayRate: null, salaryAnnual: 720_000, presentDays: 26 });
+
+    const before = await harness
+      .http()
+      .get(`/api/v1/billing/margin?from=${PERIOD.from}&to=${PERIOD.to}`)
+      .set(auth(manager))
+      .expect(200);
+    expect(before.body.totals.unbilledAssignments).toBe(1);
+    expect(before.body.totals.notBilledAssignments).toBe(0);
+
+    await harness
+      .http()
+      .patch(`/api/v1/assignments/${built.assignmentId}/bill-rate`)
+      .set(auth(manager))
+      .send({ billRatePerDay: null, notBilledReason: 'Internal curriculum work.' })
+      .expect(200);
+
+    const after = await harness
+      .http()
+      .get(`/api/v1/billing/margin?from=${PERIOD.from}&to=${PERIOD.to}`)
+      .set(auth(manager))
+      .expect(200);
+    // The revenue has not moved — nothing was billed either way. What has moved
+    // is whether anybody still needs to do something, which is the whole point.
+    expect(after.body.totals.revenue).toBe(before.body.totals.revenue);
+    expect(after.body.totals.unbilledAssignments).toBe(0);
+    expect(after.body.totals.notBilledAssignments).toBe(1);
+  });
+
+  it('lists the assignments behind a row, and they sum to it', async () => {
+    const report = await harness
+      .http()
+      .get(`/api/v1/billing/margin?from=${PERIOD.from}&to=${PERIOD.to}`)
+      .set(auth(manager))
+      .expect(200);
+    const row = report.body.rows[0];
+
+    const behind = await harness
+      .http()
+      .get(
+        `/api/v1/billing/margin/assignments?from=${PERIOD.from}&to=${PERIOD.to}&groupBy=project&key=${row.key}`,
+      )
+      .set(auth(manager))
+      .expect(200);
+
+    expect(behind.body.rows.length).toBeGreaterThan(0);
+    // A drill-down that does not add up to the figure it claims to explain is
+    // worse than no drill-down: it makes the report look wrong.
+    const summed = behind.body.rows.reduce(
+      (total: number, one: { margin: number }) => total + one.margin,
+      0,
+    );
+    expect(Math.round(summed)).toBe(Math.round(row.margin));
+  });
+
+  it('narrows to the assignments that are actually holding the figure up', async () => {
+    await resetDatabase(harness.prisma);
+    const managerUser = await harness.seedUser({ role: 'manager' });
+    await harness.seedUser({ role: 'hr' });
+    await harness.seedUser({ role: 'project_lead' });
+    await harness.seedUser({ role: 'trainer' });
+    manager = await harness.signIn(managerUser.email);
+    const built = await buildEngagement({ dayRate: null, salaryAnnual: 720_000, presentDays: 26 });
+
+    const undecided = await harness
+      .http()
+      .get(
+        `/api/v1/billing/margin/assignments?from=${PERIOD.from}&to=${PERIOD.to}&undecidedOnly=true`,
+      )
+      .set(auth(manager))
+      .expect(200);
+    expect(undecided.body.rows).toHaveLength(1);
+    expect(undecided.body.rows[0].billing).toBe('undecided');
+
+    await harness
+      .http()
+      .patch(`/api/v1/assignments/${built.assignmentId}/bill-rate`)
+      .set(auth(manager))
+      .send({ billRatePerDay: null, notBilledReason: 'Internal curriculum work.' })
+      .expect(200);
+
+    const settled = await harness
+      .http()
+      .get(
+        `/api/v1/billing/margin/assignments?from=${PERIOD.from}&to=${PERIOD.to}&undecidedOnly=true`,
+      )
+      .set(auth(manager))
+      .expect(200);
+    expect(settled.body.rows).toHaveLength(0);
+  });
+
+  it('will not show the assignments behind a row to anybody who cannot read the row', async () => {
+    for (const session of [hr, lead, trainer]) {
+      await harness.http().get('/api/v1/billing/margin/assignments').set(auth(session)).expect(403);
+    }
+  });
+
   it('exports the same figures as a CSV whose numbers are numbers', async () => {
     const response = await harness
       .http()
@@ -441,6 +545,82 @@ describe('the rate on an assignment', () => {
       where: { id: context.assignmentId },
     });
     expect(assignment.billRatePerDay).toBeNull();
+  });
+
+  it('records why work is not billed, and who decided that', async () => {
+    await harness
+      .http()
+      .patch(`/api/v1/assignments/${context.assignmentId}/bill-rate`)
+      .set(auth(manager))
+      .send({ billRatePerDay: null, notBilledReason: 'Internal curriculum work.' })
+      .expect(200);
+
+    const assignment = await harness.prisma.db.assignment.findUniqueOrThrow({
+      where: { id: context.assignmentId },
+    });
+    expect(assignment.notBilledReason).toBe('Internal curriculum work.');
+    // "Why is this unbilled?" is asked months later about a choice somebody
+    // made, so the choice carries a name and a time.
+    expect(assignment.notBilledById).not.toBeNull();
+    expect(assignment.notBilledAt).not.toBeNull();
+  });
+
+  it('retracts the decision when a rate is finally agreed', async () => {
+    await harness
+      .http()
+      .patch(`/api/v1/assignments/${context.assignmentId}/bill-rate`)
+      .set(auth(manager))
+      .send({ billRatePerDay: null, notBilledReason: 'Internal curriculum work.' })
+      .expect(200);
+
+    await harness
+      .http()
+      .patch(`/api/v1/assignments/${context.assignmentId}/bill-rate`)
+      .set(auth(manager))
+      .send({ billRatePerDay: 5500 })
+      .expect(200);
+
+    const assignment = await harness.prisma.db.assignment.findUniqueOrThrow({
+      where: { id: context.assignmentId },
+    });
+    // A stale reason under a live rate would read as though somebody had
+    // declared billed work internal, and the database refuses the row anyway.
+    expect(assignment.notBilledReason).toBeNull();
+    expect(assignment.notBilledAt).toBeNull();
+    expect(Number(assignment.billRatePerDay)).toBe(5500);
+  });
+
+  it('refuses a rate and a reason not to bill in the same request', async () => {
+    await harness
+      .http()
+      .patch(`/api/v1/assignments/${context.assignmentId}/bill-rate`)
+      .set(auth(manager))
+      .send({ billRatePerDay: 5000, notBilledReason: 'Internal curriculum work.' })
+      .expect(422);
+  });
+
+  it('will not let the database hold a rate and a reason at once', async () => {
+    // The guard above is the one people meet; this is the one that holds when
+    // something writes around it.
+    await expect(
+      harness.prisma.db.assignment.update({
+        where: { id: context.assignmentId },
+        data: {
+          billRatePerDay: 5000,
+          notBilledReason: 'Internal.',
+          notBilledAt: new Date(),
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('will not let a reason stand without somebody behind it', async () => {
+    await expect(
+      harness.prisma.db.assignment.update({
+        where: { id: context.assignmentId },
+        data: { billRatePerDay: null, notBilledReason: 'Internal.', notBilledAt: null },
+      }),
+    ).rejects.toThrow();
   });
 
   it('refuses a rate that is really an annual figure', async () => {

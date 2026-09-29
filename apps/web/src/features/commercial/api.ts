@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ClientStatus } from '@managedops/shared';
+import type { BillingState, ClientStatus } from '@managedops/shared';
 import { api } from '../../lib/api';
 import type { Page } from '../onboarding/api';
 
@@ -78,9 +78,16 @@ function useCommercialMutation<TInput, TResult>(request: (input: TInput) => Prom
       // rate is edited on, so leaving it out means the one view the user is
       // looking at is the one that does not update.
       await Promise.all(
-        ['clients', 'client', 'margin', 'roster', 'assignments', 'trainer', 'projects'].map((key) =>
-          queryClient.invalidateQueries({ queryKey: [key] }),
-        ),
+        [
+          'clients',
+          'client',
+          'margin',
+          'margin-assignments',
+          'roster',
+          'assignments',
+          'trainer',
+          'projects',
+        ].map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
       );
     },
   });
@@ -100,10 +107,16 @@ export function useUpdateClient() {
 }
 
 export function useSetBillRate() {
-  return useCommercialMutation((input: { assignmentId: string; billRatePerDay: number | null }) =>
-    api.patch(`/assignments/${input.assignmentId}/bill-rate`, {
-      billRatePerDay: input.billRatePerDay,
-    }),
+  return useCommercialMutation(
+    (input: {
+      assignmentId: string;
+      billRatePerDay: number | null;
+      notBilledReason?: string | null;
+    }) =>
+      api.patch(`/assignments/${input.assignmentId}/bill-rate`, {
+        billRatePerDay: input.billRatePerDay,
+        notBilledReason: input.notBilledReason ?? null,
+      }),
   );
 }
 
@@ -124,7 +137,40 @@ export interface MarginRow {
   unbilled: boolean;
   billableDays: number;
   payableDays: number;
+  /** No rate and no decision — the only count there is anything to do about. */
   unbilledAssignments: number;
+  /** Deliberately not billed, and therefore already accounted for. */
+  notBilledAssignments: number;
+}
+
+/** One assignment behind a margin row, with the rate that is or is not on it. */
+export interface MarginAssignment {
+  assignmentId: string;
+  trainerId: string;
+  trainerName: string;
+  employeeCode: string;
+  projectId: string;
+  projectName: string;
+  projectCode: string;
+  clientName: string;
+  billRatePerDay: number | null;
+  notBilledReason: string | null;
+  billing: BillingState;
+  billableDays: number;
+  revenue: number;
+  salaryCost: number;
+  reimbursements: number;
+  cost: number;
+  margin: number;
+  marginPercent: number | null;
+}
+
+export interface MarginAssignments {
+  from: string;
+  to: string;
+  groupBy: GroupBy;
+  key: string | null;
+  rows: MarginAssignment[];
 }
 
 export interface MarginReport {
@@ -133,6 +179,30 @@ export interface MarginReport {
   groupBy: GroupBy;
   rows: MarginRow[];
   totals: Omit<MarginRow, 'key' | 'label' | 'sublabel' | 'payableDays'>;
+}
+
+/**
+ * The assignments behind one margin row, or the ones still awaiting a rate.
+ *
+ * `enabled` rather than a conditional hook: the drill-down is opened and closed,
+ * and a query that unmounts loses the cached answer the user just looked at.
+ */
+export function useMarginAssignments(
+  filters: MarginFilters & { key?: string; undecidedOnly?: boolean },
+  enabled: boolean,
+) {
+  const search = new URLSearchParams({ groupBy: filters.groupBy });
+  if (filters.from) search.set('from', filters.from);
+  if (filters.to) search.set('to', filters.to);
+  if (filters.key) search.set('key', filters.key);
+  if (filters.undecidedOnly) search.set('undecidedOnly', 'true');
+
+  return useQuery({
+    queryKey: ['margin-assignments', filters],
+    queryFn: ({ signal }) =>
+      api.get<MarginAssignments>(`/billing/margin/assignments?${search}`, signal),
+    enabled,
+  });
 }
 
 export interface MarginFilters {

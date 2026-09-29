@@ -53,8 +53,10 @@ const ASSIGNMENT_SELECT = {
  * than stripping it later means a new endpoint cannot leak it by forgetting to.
  */
 function assignmentSelect(user: AuthenticatedUser) {
+  // Why something is not billed is commercial information in the same way the
+  // rate is: it names a concession or an internal arrangement.
   return can(user.role, 'billing.read')
-    ? { ...ASSIGNMENT_SELECT, billRatePerDay: true }
+    ? { ...ASSIGNMENT_SELECT, billRatePerDay: true, notBilledReason: true, notBilledAt: true }
     : ASSIGNMENT_SELECT;
 }
 
@@ -244,12 +246,17 @@ export class AssignmentsService {
   }
 
   /**
-   * Sets what the client pays for this trainer's days.
+   * Answers how this assignment is billed: at a rate, or deliberately not.
    *
    * Separate from `end` and from creation because it is a different decision by
-   * a different person: staffing is HR's, pricing is the Manager's. Null is a
-   * real answer — "this work is not billed" — and the audit trail is what
-   * distinguishes it from a rate nobody has got round to agreeing.
+   * a different person: staffing is HR's, pricing is the Manager's.
+   *
+   * The two answers are mutually exclusive and clearing each other is the whole
+   * point. Setting a rate on work previously marked internal retracts that
+   * decision, and marking rated work internal drops the rate — leaving either
+   * behind would produce a row that claims both, which the database refuses
+   * anyway. Whoever decided not to bill is recorded, because "why is this
+   * unbilled?" is a question asked months later about a choice somebody made.
    */
   async setBillRate(assignmentId: string, input: SetBillRateInput, actor: AuthenticatedUser) {
     const assignment = await this.prisma.db.assignment.findFirst({
@@ -258,9 +265,20 @@ export class AssignmentsService {
     });
     if (!assignment) throw new NotFoundProblem('That assignment');
 
+    const notBilledReason = input.billRatePerDay == null ? (input.notBilledReason ?? null) : null;
+
     return this.prisma.db.assignment.update({
       where: { id: assignmentId },
-      data: { billRatePerDay: input.billRatePerDay, updatedById: actor.userId },
+      data: {
+        billRatePerDay: input.billRatePerDay,
+        notBilledReason,
+        // Attribution travels with the reason or not at all: the constraint
+        // requires both or neither, and a stale timestamp on a retracted
+        // decision reads as though somebody made it today.
+        notBilledAt: notBilledReason ? new Date() : null,
+        notBilledById: notBilledReason ? actor.userId : null,
+        updatedById: actor.userId,
+      },
       select: assignmentSelect(actor),
     });
   }

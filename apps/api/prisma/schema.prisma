@@ -362,6 +362,7 @@ model User {
   notifications      Notification[]
   messageDeliveries  MessageDelivery[]
   payrollExports     PayrollExport[]     @relation("PayrollExporter")
+  notBilledAssignments Assignment[]      @relation("AssignmentNotBilledBy")
   auditLogs          AuditLog[]
   managedProjects    Project[]           @relation("ProjectManager")
   hrProjects         Project[]           @relation("ProjectHr")
@@ -1106,10 +1107,22 @@ model Assignment {
   /// It lives on the assignment rather than the trainer or the project because
   /// that is the granularity a rate is actually agreed at: the same trainer can
   /// be worth a different rate to two clients, and two trainers on one project
-  /// rarely bill the same. Null means the work is not billed — an internal
-  /// project, or a rate nobody has agreed yet — which is why revenue is absent
-  /// rather than zero for those.
+  /// rarely bill the same. Null means no revenue, which is why revenue is
+  /// absent rather than zero for those — and the three fields below say which
+  /// kind of null it is.
   billRatePerDay Decimal? @db.Decimal(10, 2)
+
+  /// Why this work is deliberately not billed — internal delivery, a goodwill
+  /// engagement, work absorbed into a fixed fee.
+  ///
+  /// Its presence is the decision. Without it, an unrated assignment and an
+  /// internal one are the same row, so the margin screen has to warn about
+  /// both forever and the warning stops being read. A database constraint
+  /// keeps this and a rate from ever being set at the same time: the two are
+  /// contradictory answers to one question.
+  notBilledReason String?
+  notBilledAt     DateTime?
+  notBilledById   String?
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -1120,6 +1133,7 @@ model Assignment {
 
   trainer     Trainer                @relation(fields: [trainerId], references: [id])
   project     Project                @relation(fields: [projectId], references: [id])
+  notBilledBy User?                  @relation("AssignmentNotBilledBy", fields: [notBilledById], references: [id])
   attendance  AttendanceRecord[]
   leave       LeaveRequest[]
   dailyLogs   DailyLog[]
