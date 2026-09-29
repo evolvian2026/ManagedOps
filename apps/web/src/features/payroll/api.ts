@@ -25,11 +25,30 @@ export interface PayrollRow {
   blockers: string[];
 }
 
+/** What the month's last handoff to payroll looked like. */
+export interface PayrollHandoff {
+  at: string;
+  by: string;
+  layout: string;
+  rowCount: number;
+  forced: boolean;
+  /** False once a figure has moved since it was sent. */
+  stillCurrent: boolean;
+}
+
+export interface PayrollExportLayoutInfo {
+  id: string;
+  label: string;
+  description: string;
+  columns: string[];
+}
+
 export interface PayrollRegister {
   month: string;
   from: string;
   to: string;
   generatedAt: string;
+  lastExport: PayrollHandoff | null;
   rows: PayrollRow[];
   totals: {
     people: number;
@@ -69,6 +88,15 @@ export function usePayrollRegister(filters: PayrollFilters) {
  * definition incomplete, and every row would read as not ready for reasons
  * nobody can do anything about yet.
  */
+export function useExportLayouts() {
+  return useQuery({
+    queryKey: ['payroll-export-layouts'],
+    // The layouts are a fact about the build, not about the month.
+    staleTime: Infinity,
+    queryFn: ({ signal }) => api.get<PayrollExportLayoutInfo[]>('/payroll/export-layouts', signal),
+  });
+}
+
 export function lastCompleteMonth(): string {
   const now = new Date();
   return new Date(Date.UTC(now.getFullYear(), now.getMonth() - 1, 1)).toISOString().slice(0, 7);

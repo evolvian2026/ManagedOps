@@ -1,7 +1,14 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { payrollQuerySchema, type PayrollQuery } from '@managedops/shared';
+import {
+  PAYROLL_EXPORT_LAYOUT_IDS,
+  payrollExportLayout,
+  payrollExportQuerySchema,
+  payrollQuerySchema,
+  type PayrollExportQuery,
+  type PayrollQuery,
+} from '@managedops/shared';
 import {
   Audited,
   CurrentUser,
@@ -9,7 +16,7 @@ import {
   type AuthenticatedUser,
 } from '../../common/decorators/index.js';
 import { validate } from '../../common/pipes/zod-validation.pipe.js';
-import { sendCsv, toCsv } from '../../common/csv.js';
+import { sendCsv } from '../../common/csv.js';
 import { PayrollService } from './payroll.service.js';
 
 @ApiTags('payroll')
@@ -31,36 +38,32 @@ export class PayrollController {
 
   @Get('register/export.csv')
   @RequireCapability('payroll.read')
-  @ApiOperation({ summary: 'The register as a CSV for the payroll system' })
+  @ApiOperation({ summary: 'Hand the month to payroll, and record that it went' })
   async export(
-    @Query(validate(payrollQuerySchema)) query: PayrollQuery,
+    @Query(validate(payrollExportQuerySchema)) query: PayrollExportQuery,
     @CurrentUser() user: AuthenticatedUser,
     @Res() response: Response,
   ): Promise<void> {
-    const register = await this.payroll.register(query, user);
+    const file = await this.payroll.export(query, user);
+    sendCsv(response, file.filename, file.body);
+  }
 
-    // Column names are flat and explicit because something else imports this.
-    // A header a payroll clerk has to interpret is a column they will map wrong.
-    const body = toCsv(register.rows, [
-      { header: 'employee_code', value: (row) => row.employeeCode },
-      { header: 'name', value: (row) => row.name },
-      { header: 'month', value: () => register.month },
-      { header: 'working_days_in_month', value: (row) => row.workingDaysInMonth },
-      { header: 'payable_days', value: (row) => row.payableDays },
-      { header: 'leave_days_paid', value: (row) => row.leaveDays },
-      { header: 'loss_of_pay_days', value: (row) => row.lopDays },
-      { header: 'monthly_gross_inr', value: (row) => row.monthlyGross },
-      { header: 'loss_of_pay_inr', value: (row) => row.lopDeduction },
-      { header: 'earned_gross_inr', value: (row) => row.earnedGross },
-      { header: 'reimbursements_inr', value: (row) => row.reimbursements },
-      { header: 'final_settlement_inr', value: (row) => row.finalSettlement },
-      { header: 'total_payable_inr', value: (row) => row.totalPayable },
-      { header: 'ready_to_pay', value: (row) => (row.ready ? 'yes' : 'no') },
-      // Exported rather than hidden: a row that is not ready has to say why in
-      // the file itself, or the reason is lost the moment it leaves here.
-      { header: 'unresolved', value: (row) => row.blockers.join(' ') },
-    ]);
+  @Get('exports')
+  @RequireCapability('payroll.read')
+  @ApiOperation({ summary: 'Every time a month has been handed over, newest first' })
+  handoffs(@Query(validate(payrollExportQuerySchema)) query: PayrollExportQuery) {
+    return this.payroll.handoffs(query.month);
+  }
 
-    sendCsv(response, `managedops-payroll-${register.month}.csv`, body);
+  @Get('export-layouts')
+  @RequireCapability('payroll.read')
+  @ApiOperation({ summary: 'The layouts a month can be exported in' })
+  layouts() {
+    return PAYROLL_EXPORT_LAYOUT_IDS.map((id) => ({
+      id,
+      label: payrollExportLayout(id).label,
+      description: payrollExportLayout(id).description,
+      columns: payrollExportLayout(id).columns.map((column) => column.header),
+    }));
   }
 }

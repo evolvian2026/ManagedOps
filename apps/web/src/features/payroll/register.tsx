@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Badge, Button, Card, Field, PageHeader, Table, Td, Th } from '../../components/ui';
+import { Badge, Card, Field, PageHeader, Table, Td, Th } from '../../components/ui';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states';
 import { formatInr, formatIst, humanise } from '../onboarding/format';
-import { downloadCsv } from '../exit/api';
-import { lastCompleteMonth, payrollSearch, usePayrollRegister, type PayrollRow } from './api';
+import { ExportControl, LastHandoff } from './export-control';
+import { lastCompleteMonth, usePayrollRegister, type PayrollRow } from './api';
 
 /**
  * The month's pay inputs.
@@ -30,19 +30,7 @@ export function PayrollRegisterPage() {
       <PageHeader
         title="Payroll Register"
         description="The month’s days and money, in the shape a payroll system wants them."
-        actions={
-          <Button
-            variant="secondary"
-            onClick={() =>
-              void downloadCsv(
-                `/payroll/register/export.csv?${payrollSearch(filters)}`,
-                `managedops-payroll-${month}.csv`,
-              )
-            }
-          >
-            Export CSV
-          </Button>
-        }
+        actions={<ExportControl filters={filters} onExported={() => void register.refetch()} />}
       />
 
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
@@ -62,6 +50,12 @@ export function PayrollRegisterPage() {
           <span className="text-ink">Only rows that still need something</span>
         </label>
       </div>
+
+      {register.data ? (
+        <div className="mb-5 rounded-lg border border-line bg-surface px-4 py-3">
+          <LastHandoff handoff={register.data.lastExport} />
+        </div>
+      ) : null}
 
       {totals ? (
         <>

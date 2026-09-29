@@ -282,6 +282,45 @@ and it is why the response carries the time it was generated.
 `payroll.read` is held by Super Admin, Manager and HR. Not a project lead and
 not a trainer: the register carries every salary on it.
 
+### Handing it over
+
+**Payroll owns the salary structure; ManagedOps owns the attendance.** A payroll
+provider already knows what somebody is on and what their PF, ESI and TDS come
+to. What it cannot know is how many days they actually worked, which were paid
+leave, and how many were loss of pay. So the default export carries _days_, and
+no money — sending our computed gross as though it were authoritative is how
+two systems come to disagree on payday and nobody can say which is right. A
+second layout adds the money, the claims and the settlements, for reconciling
+against what payroll produced.
+
+**An unsettled month is refused, not warned about.** The screen used to advise
+settling first; advice is not a control, and the cost of importing a
+half-settled month is somebody underpaid. The export refuses, names how many
+rows and why, and takes a deliberate override that puts every blocker in the
+file — so the decision travels with the data. The record marks it as forced.
+
+**The days in the file reconcile**: `working_days_in_month = paid_days +
+loss_of_pay_days + unrecorded_days`, every row. Unrecorded days get a column of
+their own because they are neither paid nor docked — nobody has yet said which
+they were — while the proration charges for them regardless. Without that
+column a half-recorded month reads as a short one with no reason given, and the
+money columns dock days the day columns never account for. `paid_leave_days` is
+a breakdown of `paid_days`, not an addition to it.
+
+**Both layouts carry `ready_to_pay` and `unresolved`**, last in the row. The
+days layout is the one that gets sent, so it is the one that has to carry the
+reasons — a decision to export an unsettled month is worth nothing if it stays
+behind with the person who made it.
+
+**The file is always the whole month**, whatever the screen was filtered to. A
+file that silently holds a subset is the worst thing to hand payroll.
+
+**Every handoff is recorded**, with a SHA-256 digest over the figures that would
+change a payment — not the names, not the wording of a blocker. That is what
+lets the register say _the figures have changed since you sent them_ rather than
+leaving it to be discovered at the next payday. A corrected spelling does not
+make a settled month look stale; an approved claim does.
+
 ---
 
 ## The feedback loop
@@ -568,6 +607,6 @@ Every screen in the specification is implemented; there are no placeholders.
 
 | Suite                             | Count |
 | --------------------------------- | ----- |
-| Shared contracts                  | 252   |
-| API integration (real PostgreSQL) | 752   |
-| Browser (desktop + mobile)        | 168   |
+| Shared contracts                  | 269   |
+| API integration (real PostgreSQL) | 768   |
+| Browser (desktop + mobile)        | 172   |

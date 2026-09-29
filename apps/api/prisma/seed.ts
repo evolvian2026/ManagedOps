@@ -40,6 +40,21 @@ function dateOnly(date: Date): Date {
 }
 
 /**
+ * Pulls a date back inside the month we are in.
+ *
+ * Several seeded facts are there to be visible on a screen that works a
+ * calendar month — the payroll register above all. A date written as "a week
+ * out" quietly leaves that month for the last week of every month, and the
+ * demo stops showing the thing it exists to show. Clamping keeps the intent.
+ */
+function withinThisMonth(date: Date): Date {
+  const endOfMonth = new Date(
+    Date.UTC(TODAY.getUTCFullYear(), TODAY.getUTCMonth() + 1, 0, 12, 0, 0),
+  );
+  return date > endOfMonth ? endOfMonth : date;
+}
+
+/**
  * Empties every table so a seed lands on a known-empty database.
  *
  * Discovered from the catalogue rather than listed by hand: a table added in a
@@ -962,12 +977,18 @@ async function main(): Promise<void> {
       where: { assignmentId: arjunAssignment.id },
     });
     if (!existing) {
+      // Two days, still ahead but inside this month: the register for the
+      // month in progress has to be able to name a leave nobody has decided,
+      // and a request that has slipped into next month is not it.
+      const leaveEnd = withinThisMonth(daysFromToday(8));
+      const leaveStart = new Date(leaveEnd);
+      leaveStart.setUTCDate(leaveStart.getUTCDate() - 1);
       await prisma.leaveRequest.create({
         data: {
           id: uuidv7(),
           assignmentId: arjunAssignment.id,
-          startDate: dateOnly(daysFromToday(7)),
-          endDate: dateOnly(daysFromToday(8)),
+          startDate: dateOnly(leaveStart),
+          endDate: dateOnly(leaveEnd),
           dayType: 'full',
           daysCount: new Prisma.Decimal(2),
           unpaidDays: new Prisma.Decimal(0),

@@ -1,17 +1,27 @@
+import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import {
+  DEFAULT_PAYROLL_EXPORT_LAYOUT,
   computeMonthlyPay,
+  payrollExportLayout,
+  payrollFiguresDigestInput,
   payrollReadiness,
   summarisePayrollDays,
   toIstDateString,
   type MonthlyPay,
   type PayrollDays,
+  type PayrollExportLayoutId,
+  type PayrollExportQuery,
+  type PayrollExportRow,
   type PayrollQuery,
   type PayrollReadiness,
 } from '@managedops/shared';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { WorkingDaysService } from '../../common/working-days.js';
 import { projectScope, scopedWhere } from '../../common/scope.js';
+import { newId } from '../../common/ids.js';
+import { DomainRuleProblem } from '../../common/errors.js';
+import { toCsv } from '../../common/csv.js';
 import type { AuthenticatedUser } from '../../common/decorators/index.js';
 
 export interface PayrollRow extends PayrollDays, MonthlyPay, PayrollReadiness {
@@ -23,12 +33,35 @@ export interface PayrollRow extends PayrollDays, MonthlyPay, PayrollReadiness {
   projects: string[];
   /** Working days the month held, which is what the proration divides by. */
   workingDaysInMonth: number;
+  /**
+   * Working days the month expected with no attendance recorded against them.
+   *
+   * Not the same as loss of pay: nobody has yet said whether they were absent
+   * or simply not punched. The proration charges for them all the same, which
+   * is why the number is stated rather than left to be inferred.
+   */
+  unrecordedDays: number;
   /** Approved claims from the month. Paid alongside salary, not part of it. */
   reimbursements: number;
   /** A final settlement falling in this month, for somebody who has left. */
   finalSettlement: number;
   /** Salary plus what is owed on top. Before statutory deductions. */
   totalPayable: number;
+}
+
+/** What a month's last handoff to payroll looked like, if there was one. */
+export interface PayrollHandoff {
+  at: string;
+  by: string;
+  layout: string;
+  rowCount: number;
+  forced: boolean;
+  /**
+   * Whether the figures still match what was sent. The whole reason the digest
+   * is kept: a file exported on the 3rd can stop being true by the 5th, and
+   * nobody finds out unless something says so.
+   */
+  stillCurrent: boolean;
 }
 
 export interface PayrollRegister {
@@ -38,6 +71,8 @@ export interface PayrollRegister {
   /** When these figures were worked out; they are live, not a snapshot. */
   generatedAt: string;
   rows: PayrollRow[];
+  /** Null until the month has been sent once. */
+  lastExport: PayrollHandoff | null;
   totals: {
     people: number;
     ready: number;
@@ -159,6 +194,9 @@ export class PayrollService {
       from,
       to,
       generatedAt: new Date().toISOString(),
+      // Taken over the whole month, never the filtered view: whether what
+      // payroll holds is current cannot depend on a checkbox on the screen.
+      lastExport: await this.lastHandoff(month, rows),
       rows: shown,
       totals: {
         // Counted over the rows shown, so a filtered view totals what it lists.
@@ -171,6 +209,117 @@ export class PayrollService {
         finalSettlement: sum(shown.map((row) => row.finalSettlement)),
         totalPayable: sum(shown.map((row) => row.totalPayable)),
       },
+    };
+  }
+
+  /**
+   * The month as a file, and a record that it left.
+   *
+   * Refuses a month that is not ready unless somebody says otherwise. The
+   * screen already advised settling first; advice is not a control, and the
+   * cost of a clerk importing a half-settled month is somebody underpaid.
+   */
+  async export(
+    query: PayrollExportQuery,
+    user: AuthenticatedUser,
+  ): Promise<{ filename: string; body: string }> {
+    const layout = (query.layout ?? DEFAULT_PAYROLL_EXPORT_LAYOUT) as PayrollExportLayoutId;
+
+    // Deliberately the whole month, whatever the screen was filtering to. A
+    // file that silently holds a subset is the worst thing to hand payroll.
+    const register = await this.register({ ...query, unresolvedOnly: false }, user);
+    const unresolved = register.rows.filter((row) => !row.ready);
+
+    if (unresolved.length > 0 && !query.force) {
+      throw new DomainRuleProblem(
+        'payroll-month-not-ready',
+        `${unresolved.length} of ${register.rows.length} ${
+          unresolved.length === 1 ? 'row is' : 'rows are'
+        } not ready to pay from: ${unresolved[0]!.blockers[0] ?? 'unresolved.'} ` +
+          'Settle those first, or export anyway to send the month with its blockers.',
+      );
+    }
+
+    const rows = register.rows.map((row) => toExportRow(row, register.month));
+    const body = toCsv(rows, [...payrollExportLayout(layout).columns]);
+
+    await this.prisma.db.payrollExport.create({
+      data: {
+        id: newId(),
+        month: register.month,
+        layout,
+        rowCount: rows.length,
+        totalPayable: register.totals.totalPayable,
+        figuresDigest: digestOf(rows),
+        forced: unresolved.length > 0,
+        unresolvedRows: unresolved.length,
+        exportedById: user.userId,
+      },
+    });
+
+    return { filename: `managedops-payroll-${register.month}-${layout}.csv`, body };
+  }
+
+  /**
+   * Every handoff of a month, newest first — the record of what payroll holds.
+   *
+   * Resolves an absent month through the same rule the register does, so the
+   * history and the figures on screen can never be talking about different
+   * months.
+   */
+  async handoffs(month?: string) {
+    const exports = await this.prisma.db.payrollExport.findMany({
+      where: { month: resolveMonth(month).month },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        layout: true,
+        rowCount: true,
+        totalPayable: true,
+        forced: true,
+        unresolvedRows: true,
+        createdAt: true,
+        exportedBy: { select: { name: true } },
+      },
+    });
+
+    return exports.map((row) => ({
+      id: row.id,
+      layout: row.layout,
+      rowCount: row.rowCount,
+      totalPayable: Number(row.totalPayable),
+      forced: row.forced,
+      unresolvedRows: row.unresolvedRows,
+      at: row.createdAt.toISOString(),
+      by: row.exportedBy.name,
+    }));
+  }
+
+  private async lastHandoff(
+    month: string,
+    rows: readonly PayrollRow[],
+  ): Promise<PayrollHandoff | null> {
+    const last = await this.prisma.db.payrollExport.findFirst({
+      where: { month },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        layout: true,
+        rowCount: true,
+        forced: true,
+        figuresDigest: true,
+        createdAt: true,
+        exportedBy: { select: { name: true } },
+      },
+    });
+    if (!last) return null;
+
+    return {
+      at: last.createdAt.toISOString(),
+      by: last.exportedBy.name,
+      layout: last.layout,
+      rowCount: last.rowCount,
+      forced: last.forced,
+      stillCurrent: last.figuresDigest === digestOf(rows.map((row) => toExportRow(row, month))),
     };
   }
 
@@ -211,10 +360,12 @@ export class PayrollService {
     const reimbursements = sum(trainer.reimbursements.map((claim) => Number(claim.amount)));
     const finalSettlement = context.settlements.get(trainer.id) ?? 0;
 
+    // A day expected but never recorded is the gap that matters: it is
+    // indistinguishable from an absence until somebody says which it was.
+    const unrecordedDays = Math.max(0, workingDaysInMonth - days.workingDays);
+
     const readiness = payrollReadiness({
-      // A day expected but never recorded is the gap that matters: it is
-      // indistinguishable from an absence until somebody says which it was.
-      unrecordedDays: Math.max(0, workingDaysInMonth - days.workingDays),
+      unrecordedDays,
       pendingCorrections: sum(
         trainer.assignments.flatMap((assignment) =>
           assignment.attendance.map((record) => record.corrections.length),
@@ -232,6 +383,7 @@ export class PayrollService {
       status: trainer.status,
       projects: [...new Set(trainer.assignments.map((a) => a.project.name))],
       workingDaysInMonth,
+      unrecordedDays,
       ...days,
       ...pay,
       reimbursements,
@@ -316,4 +468,30 @@ function sum(values: readonly number[]): number {
 
 function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+/** The register's row, flattened to what a file and a digest both read from. */
+function toExportRow(row: PayrollRow, month: string): PayrollExportRow {
+  return {
+    employeeCode: row.employeeCode,
+    name: row.name,
+    month,
+    workingDaysInMonth: row.workingDaysInMonth,
+    payableDays: row.payableDays,
+    leaveDays: row.leaveDays,
+    lopDays: row.lopDays,
+    unrecordedDays: row.unrecordedDays,
+    monthlyGross: row.monthlyGross,
+    lopDeduction: row.lopDeduction,
+    earnedGross: row.earnedGross,
+    reimbursements: row.reimbursements,
+    finalSettlement: row.finalSettlement,
+    totalPayable: row.totalPayable,
+    ready: row.ready,
+    blockers: row.blockers,
+  };
+}
+
+function digestOf(rows: readonly PayrollExportRow[]): string {
+  return createHash('sha256').update(payrollFiguresDigestInput(rows)).digest('hex');
 }

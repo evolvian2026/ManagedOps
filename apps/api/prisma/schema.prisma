@@ -361,6 +361,7 @@ model User {
   mfaChallenges      MfaChallenge[]
   notifications      Notification[]
   messageDeliveries  MessageDelivery[]
+  payrollExports     PayrollExport[]     @relation("PayrollExporter")
   auditLogs          AuditLog[]
   managedProjects    Project[]           @relation("ProjectManager")
   hrProjects         Project[]           @relation("ProjectHr")
@@ -542,6 +543,40 @@ model MessageDelivery {
   @@index([userId, createdAt(sort: Desc)])
   @@index([status, createdAt])
   @@map("message_deliveries")
+}
+
+/// One row each time a month is handed to payroll.
+///
+/// The register is worked out live and says so: run it twice with a correction
+/// approved in between and it differs. That is the honest behaviour, and it is
+/// exactly why the handoff has to be recorded — otherwise nobody can tell that
+/// the file payroll is holding no longer matches what the system now says.
+model PayrollExport {
+  id     String @id
+  /// `YYYY-MM`. Not a date, because a payroll period is a calendar month.
+  month  String
+  layout String
+
+  /// What went in the file, so the record stands on its own without re-running
+  /// the register against data that has since moved.
+  rowCount     Int
+  totalPayable Decimal @db.Decimal(14, 2)
+  /// SHA-256 over the figures that would change a payment — not the names, not
+  /// the wording of a blocker. Comparing it to today's answers the only
+  /// question that matters: is what they are holding still current?
+  figuresDigest String
+  /// Whether somebody deliberately exported a month that was not ready, and
+  /// how many rows that covered. A forced export is a decision worth keeping.
+  forced          Boolean @default(false)
+  unresolvedRows  Int     @default(0)
+
+  exportedById String
+  createdAt    DateTime @default(now())
+
+  exportedBy User @relation("PayrollExporter", fields: [exportedById], references: [id])
+
+  @@index([month, createdAt(sort: Desc)])
+  @@map("payroll_exports")
 }
 
 // ---------------------------------------------------------------- files

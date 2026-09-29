@@ -406,16 +406,244 @@ describe('who may read it', () => {
 
     const response = await harness
       .http()
-      .get(`/api/v1/payroll/register/export.csv?month=${MONTH}`)
+      // Two days are unrecorded, so this month only leaves with a decision.
+      .get(`/api/v1/payroll/register/export.csv?month=${MONTH}&layout=full&force=true`)
       .set(auth(hr))
       .expect(200);
 
     expect(response.headers['content-type']).toMatch(/text\/csv/);
-    expect(response.headers['content-disposition']).toMatch(/managedops-payroll-2026-06\.csv/);
+    expect(response.headers['content-disposition']).toMatch(/managedops-payroll-2026-06-full\.csv/);
     expect(response.text).toMatch(/earned_gross_inr/);
     // Unquoted and unprefixed, so a payroll system reads it as a figure.
     expect(response.text).toMatch(/,55384\.62,/);
     // The reason a row is not ready survives into the file.
     expect(response.text).toMatch(/no attendance recorded/);
+  });
+});
+
+/**
+ * Reads a named figure out of a one-row CSV.
+ *
+ * By header rather than by position, so a column added in the middle of a
+ * layout does not silently start asserting about its neighbour. Splitting on
+ * commas is safe for the figures: every quoted free-text field sits after
+ * them, so nothing it contains can shift a numeric column's index.
+ */
+function numberReader(csv: string): (header: string) => number {
+  const [headerLine, row] = csv.trim().split('\n');
+  // The file opens with a byte order mark, for Excel.
+  const headers = headerLine!.replace(/^\ufeff/, '').split(',');
+  return (header) => {
+    const index = headers.indexOf(header);
+    if (index < 0) throw new Error(`No column named ${header} in: ${headers.join(', ')}`);
+    return Number(row!.split(',')[index]);
+  };
+}
+
+describe('handing the month to payroll', () => {
+  async function exportMonth(query: string, expected = 200) {
+    return harness
+      .http()
+      .get(`/api/v1/payroll/register/export.csv?month=${MONTH}&${query}`)
+      .set(auth(hr))
+      .expect(expected);
+  }
+
+  it('refuses a month that is not settled, and says what is holding it', async () => {
+    await recordDays(context.assignmentId, 20);
+
+    const response = await exportMonth('', 409);
+
+    expect(response.body.detail).toMatch(/not ready to pay from/);
+    expect(response.body.detail).toMatch(/no attendance recorded/);
+    // Advice is not a control. Nothing is recorded, because nothing left.
+    expect(await harness.prisma.db.payrollExport.count()).toBe(0);
+  });
+
+  it('sends it anyway when somebody asks for that, and records the decision', async () => {
+    await recordDays(context.assignmentId, 20);
+    await exportMonth('force=true');
+
+    const [recorded] = await harness.prisma.db.payrollExport.findMany();
+    expect(recorded!.forced).toBe(true);
+    expect(recorded!.unresolvedRows).toBe(1);
+  });
+
+  it('sends a settled month without being asked twice', async () => {
+    await recordDays(context.assignmentId, WORKING_DAYS);
+    const response = await exportMonth('');
+
+    expect(response.headers['content-disposition']).toMatch(/2026-06-days\.csv/);
+    expect(await harness.prisma.db.payrollExport.count()).toBe(1);
+  });
+
+  it('defaults to the layout that carries days rather than money', async () => {
+    await recordDays(context.assignmentId, WORKING_DAYS);
+    const response = await exportMonth('');
+
+    expect(response.text).toMatch(/loss_of_pay_days/);
+    // Payroll holds the salary structure; our gross is not theirs to import.
+    expect(response.text).not.toMatch(/_inr/);
+  });
+
+  it('carries the money only when that layout is chosen', async () => {
+    await recordDays(context.assignmentId, WORKING_DAYS);
+    const response = await exportMonth('layout=full');
+
+    expect(response.text).toMatch(/earned_gross_inr/);
+    expect(response.text).toMatch(/loss_of_pay_days/);
+  });
+
+  it('accounts for every working day, including the ones nobody recorded', async () => {
+    // 20 of 22 recorded, all of them present. The proration docks the other
+    // two all the same, so a file that reported no loss of pay and no gap
+    // would be arithmetic payroll cannot reproduce or query.
+    await recordDays(context.assignmentId, 20);
+    const response = await exportMonth('layout=full&force=true');
+
+    const cell = numberReader(response.text);
+
+    expect(cell('working_days_in_month')).toBe(WORKING_DAYS);
+    expect(cell('paid_days')).toBe(20);
+    expect(cell('loss_of_pay_days')).toBe(0);
+    expect(cell('unrecorded_days')).toBe(WORKING_DAYS - 20);
+    // The money charges those days, which is exactly why the column is there.
+    expect(cell('loss_of_pay_inr')).toBeGreaterThan(0);
+  });
+
+  it('sends the reason with the days layout too, because that is the one sent', async () => {
+    await recordDays(context.assignmentId, 20);
+    const response = await exportMonth('force=true');
+
+    expect(response.text).not.toMatch(/_inr/);
+    // A decision to send an unsettled month is worthless if it stays behind.
+    expect(response.text).toMatch(/unrecorded_days/);
+    expect(response.text).toMatch(/no attendance recorded/);
+  });
+
+  it('sends the whole month however the screen was filtered', async () => {
+    await recordDays(context.assignmentId, WORKING_DAYS);
+    // A file that silently holds a subset is the worst thing to hand payroll.
+    const response = await exportMonth('unresolvedOnly=true');
+
+    const dataLines = response.text.trim().split('\n').slice(1);
+    expect(dataLines).toHaveLength(1);
+  });
+
+  it('records who sent it, and what went', async () => {
+    await recordDays(context.assignmentId, WORKING_DAYS);
+    await exportMonth('layout=full');
+
+    const [recorded] = await harness.prisma.db.payrollExport.findMany({
+      include: { exportedBy: { select: { role: true } } },
+    });
+    expect(recorded!.month).toBe(MONTH);
+    expect(recorded!.layout).toBe('full');
+    expect(recorded!.rowCount).toBe(1);
+    expect(recorded!.exportedBy.role).toBe('hr');
+    expect(Number(recorded!.totalPayable)).toBeGreaterThan(0);
+  });
+
+  it('tells the register the month has been sent, and still matches', async () => {
+    await recordDays(context.assignmentId, WORKING_DAYS);
+    await exportMonth('');
+
+    const after = await register();
+    expect(after.lastExport.rowCount).toBe(1);
+    expect(after.lastExport.stillCurrent).toBe(true);
+    expect(after.lastExport.forced).toBe(false);
+  });
+
+  it('says so once a figure has moved since it was sent', async () => {
+    await recordDays(context.assignmentId, WORKING_DAYS);
+    await exportMonth('');
+
+    // The case this exists for: the file payroll is holding quietly stops
+    // being true, and without this nobody finds out until the next payday.
+    const file = await harness.prisma.db.fileObject.create({
+      data: {
+        id: newId(),
+        storageKey: `receipts/${newId()}.pdf`,
+        originalName: 'receipt.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 100,
+        uploadedById: hr.user.id,
+        confirmedAt: new Date(),
+        scanStatus: 'skipped',
+      },
+    });
+    await harness.prisma.db.reimbursement.create({
+      data: {
+        id: newId(),
+        trainerId: context.trainerId,
+        assignmentId: context.assignmentId,
+        category: 'travel',
+        amount: 4000,
+        description: 'A late claim',
+        proofFileId: file.id,
+        status: 'approved',
+        reviewedById: hr.user.id,
+        reviewedAt: new Date('2026-06-20T00:00:00Z'),
+      },
+    });
+
+    const after = await register();
+    expect(after.lastExport.stillCurrent).toBe(false);
+  });
+
+  it('does not call a month stale because somebody fixed a spelling', async () => {
+    await recordDays(context.assignmentId, WORKING_DAYS);
+    await exportMonth('');
+
+    const trainerRecord = await harness.prisma.db.trainer.findUniqueOrThrow({
+      where: { id: context.trainerId },
+      select: { userId: true },
+    });
+    await harness.prisma.db.user.update({
+      where: { id: trainerRecord.userId },
+      data: { name: 'A Corrected Name' },
+    });
+
+    const after = await register();
+    expect(after.lastExport.stillCurrent).toBe(true);
+  });
+
+  it('has nothing to report before the month has been sent', async () => {
+    await recordDays(context.assignmentId, WORKING_DAYS);
+    expect((await register()).lastExport).toBeNull();
+  });
+
+  it('keeps every handoff, newest first', async () => {
+    await recordDays(context.assignmentId, WORKING_DAYS);
+    await exportMonth('');
+    await exportMonth('layout=full');
+
+    const response = await harness
+      .http()
+      .get(`/api/v1/payroll/exports?month=${MONTH}`)
+      .set(auth(hr))
+      .expect(200);
+
+    expect(response.body.map((row: { layout: string }) => row.layout)).toEqual(['full', 'days']);
+    expect(response.body[0].by).toBeTruthy();
+  });
+
+  it('offers the layouts, with what each one holds', async () => {
+    const response = await harness
+      .http()
+      .get('/api/v1/payroll/export-layouts')
+      .set(auth(hr))
+      .expect(200);
+
+    const days = response.body.find((row: { id: string }) => row.id === 'days');
+    expect(days.columns).toContain('loss_of_pay_days');
+    expect(days.description.length).toBeGreaterThan(20);
+  });
+
+  it('is not something a lead or a trainer can do', async () => {
+    for (const session of [lead, trainer]) {
+      await harness.http().get('/api/v1/payroll/exports').set(auth(session)).expect(403);
+      await harness.http().get('/api/v1/payroll/export-layouts').set(auth(session)).expect(403);
+    }
   });
 });

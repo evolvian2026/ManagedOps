@@ -79,7 +79,12 @@ test.describe('the margin report', () => {
     await signIn(page, MANAGER);
     await page.goto('/margin');
 
-    await expect(page.getByRole('heading', { name: 'Margin' })).toBeVisible();
+    // level and exact both matter: the page's own cards are headed "Margin"
+    // and "Margin %", and a substring match on the name picks up all three
+    // the moment they render.
+    await expect(
+      page.getByRole('heading', { name: 'Margin', exact: true, level: 1 }),
+    ).toBeVisible();
     const revenue = page.getByRole('region', { name: 'Revenue' });
     await expect(revenue).toContainText('₹');
     await expect(page.getByRole('table')).toContainText('Full Stack Bootcamp');

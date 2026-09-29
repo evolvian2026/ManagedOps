@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PAYROLL_EXPORT_LAYOUT_IDS } from '../payroll-export.js';
 
 /**
  * A payroll month.
@@ -22,3 +23,22 @@ export const payrollQuerySchema = z
   })
   .strict();
 export type PayrollQuery = z.infer<typeof payrollQuerySchema>;
+
+/**
+ * Exporting a month.
+ *
+ * `force` exists because refusing outright would be its own failure mode —
+ * somebody does occasionally need the file for a month that will never fully
+ * settle. It has to be asked for, though, and the file it produces carries
+ * every blocker so the choice travels with the data.
+ */
+export const payrollExportQuerySchema = payrollQuerySchema
+  .extend({
+    layout: z.enum(PAYROLL_EXPORT_LAYOUT_IDS as [string, ...string[]]).optional(),
+    force: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((value) => value === 'true'),
+  })
+  .strict();
+export type PayrollExportQuery = z.infer<typeof payrollExportQuerySchema>;

@@ -131,3 +131,48 @@ test.describe('the payroll register', () => {
     }
   });
 });
+
+test.describe('handing the month to payroll', () => {
+  test('asks which layout, and says what each one holds', async ({ page }) => {
+    await signIn(page, HR);
+    await page.goto('/payroll');
+
+    await page.getByRole('button', { name: 'Send to payroll' }).click();
+    const dialog = page.getByRole('dialog');
+
+    await expect(dialog).toContainText('Attendance and loss of pay');
+    // The distinction the whole feature turns on, stated where the choice is
+    // made: payroll holds the salary structure, we hold the attendance.
+    await expect(dialog).toContainText('Payroll works out the money');
+    await expect(dialog).toContainText('Days and money');
+  });
+
+  test('refuses a month that is not settled, and offers the way through', async ({ page }) => {
+    await signIn(page, HR);
+    await page.goto('/payroll');
+    // The month in progress can never be settled — its attendance is not in yet.
+    await page.getByLabel('Month').fill(currentMonth());
+
+    await page.getByRole('button', { name: 'Send to payroll' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Send', exact: true }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('alert')).toContainText(/not ready to pay from/);
+    // Offered only once the refusal has been read, never before.
+    await expect(dialog.getByRole('button', { name: /Send anyway/ })).toBeVisible();
+  });
+
+  test('says the month has not been sent yet', async ({ page }) => {
+    await signIn(page, HR);
+    await page.goto('/payroll');
+
+    await expect(page.getByText('This month has not been sent to payroll yet.')).toBeVisible();
+  });
+
+  test('is offered to a manager too, who runs the month end alongside HR', async ({ page }) => {
+    await signIn(page, MANAGER);
+    await page.goto('/payroll');
+
+    await expect(page.getByRole('button', { name: 'Send to payroll' })).toBeVisible();
+  });
+});
