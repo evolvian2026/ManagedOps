@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import {
+  isAlwaysSent,
   maskMobile,
-  mobileMessagePurposes,
+  mobileMessageChoices,
   paginationSchema,
   type ContactPreferencesInput,
   type NotificationType,
@@ -119,31 +120,85 @@ export class NotificationsService {
       select: { phone: true, mobileNotifications: true },
     });
     if (!user) throw new NotFoundProblem('That account');
-    return {
-      phone: user.phone,
-      phoneMasked: user.phone ? maskMobile(user.phone) : null,
-      mobileNotifications: user.mobileNotifications,
-      purposes: mobileMessagePurposes(),
-    };
+    return this.preferencesFor(userId, user);
   }
 
+  /**
+   * Applies a change and returns the whole of what the screen shows.
+   *
+   * The declined set is replaced rather than merged: the screen holds every
+   * switch at once and sends all of them, so a delete-then-insert inside one
+   * transaction leaves the stored set exactly equal to what the person was
+   * looking at when they saved. Merging would make an unticked box
+   * indistinguishable from a box that was never sent.
+   */
   async updateContactPreferences(userId: string, input: ContactPreferencesInput) {
     const phone = input.phone === undefined ? undefined : input.phone === '' ? null : input.phone;
-    const user = await this.prisma.db.user.update({
-      where: { id: userId },
-      data: {
-        ...(phone !== undefined ? { phone } : {}),
-        ...(input.mobileNotifications !== undefined
-          ? { mobileNotifications: input.mobileNotifications }
-          : {}),
-      },
-      select: { phone: true, mobileNotifications: true },
+
+    const user = await this.prisma.db.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: {
+          ...(phone !== undefined ? { phone } : {}),
+          ...(input.mobileNotifications !== undefined
+            ? { mobileNotifications: input.mobileNotifications }
+            : {}),
+        },
+        select: { phone: true, mobileNotifications: true },
+      });
+
+      if (input.declinedNotificationTypes !== undefined) {
+        const declined = [...new Set(input.declinedNotificationTypes)].filter(
+          // Belt and braces with the schema and the CHECK constraint: an event
+          // sent before anybody signed in cannot have been refused here.
+          (type) => !isAlwaysSent(type as NotificationType),
+        );
+        await tx.notificationOptOut.deleteMany({ where: { userId } });
+        if (declined.length > 0) {
+          await tx.notificationOptOut.createMany({
+            data: declined.map((type) => ({ id: newId(), userId, type })),
+          });
+        }
+      }
+
+      return updated;
     });
+
+    return this.preferencesFor(userId, user);
+  }
+
+  /**
+   * One shape for the screen, read after every change.
+   *
+   * Re-read rather than assembled from the request, so what comes back is what
+   * is stored — including anything the write path declined to accept.
+   */
+  private async preferencesFor(
+    userId: string,
+    user: { phone: string | null; mobileNotifications: boolean },
+  ) {
+    const declined = await this.prisma.db.notificationOptOut.findMany({
+      where: { userId },
+      select: { type: true, createdAt: true },
+    });
+
     return {
       phone: user.phone,
       phoneMasked: user.phone ? maskMobile(user.phone) : null,
       mobileNotifications: user.mobileNotifications,
-      purposes: mobileMessagePurposes(),
+      /**
+       * One entry per event, with whether it is currently declined. The screen
+       * renders this rather than the catalogue, so an event added later appears
+       * as a switch without anybody remembering to come back here.
+       */
+      events: mobileMessageChoices().map((choice) => {
+        const refusal = declined.find((row) => row.type === choice.notificationType);
+        return {
+          ...choice,
+          declined: Boolean(refusal),
+          declinedAt: refusal?.createdAt ?? null,
+        };
+      }),
     };
   }
 

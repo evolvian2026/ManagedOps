@@ -31,6 +31,26 @@ async function signedIn(page: Page, email: string): Promise<void> {
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
 }
 
+/**
+ * Puts the master switch where a test needs it, rather than assuming.
+ *
+ * These tests share one seeded account and the switch persists, so a test that
+ * assumed "on" would pass or fail on whichever ran before it. Setting it is
+ * also the real user action, so nothing is faked to get there.
+ */
+async function setPhoneMessages(page: Page, on: boolean): Promise<void> {
+  const card = page.getByRole('region', { name: 'How we reach you' });
+  const wanted = card.getByRole('button', { name: on ? 'Turn off' : 'Turn on' });
+  const toClick = card.getByRole('button', { name: on ? 'Turn on' : 'Turn off' });
+
+  // Waiting for either button first, because the card renders a loading state
+  // until the preferences arrive: asking which one is showing before then finds
+  // neither, and reads that as "already in the state I wanted".
+  await expect(wanted.or(toClick)).toBeVisible();
+  if ((await toClick.count()) > 0) await toClick.click();
+  await expect(wanted).toBeVisible();
+}
+
 test.describe('how we reach you', () => {
   test('shows the number masked, and what would be sent there', async ({ page }) => {
     await signedIn(page, TRAINER);
@@ -82,10 +102,93 @@ test.describe('how we reach you', () => {
     await page.goto('/my/account');
 
     const card = page.getByRole('region', { name: 'How we reach you' });
+    await setPhoneMessages(page, true);
     await card.getByRole('button', { name: 'Turn off' }).click();
 
     await expect(card).toContainText('You will still get everything in the app and by email');
     await expect(card).toContainText('+91 ••••••');
+  });
+
+  test('offers a switch per kind of message, not one for all of them', async ({ page }) => {
+    await signedIn(page, TRAINER);
+    await page.goto('/my/account');
+    await setPhoneMessages(page, true);
+
+    const card = page.getByRole('region', { name: 'How we reach you' });
+    // The point of the change: somebody who does not want a text about every
+    // expense claim no longer has to turn the whole channel off and lose the
+    // document reminders with it.
+    await expect(
+      card.getByRole('checkbox', { name: 'When an expense claim of yours is decided' }),
+    ).toBeChecked();
+    await expect(
+      card.getByRole('checkbox', { name: 'When a leave request of yours is approved or rejected' }),
+    ).toBeChecked();
+  });
+
+  test('says which message is always sent, and offers no switch for it', async ({ page }) => {
+    await signedIn(page, TRAINER);
+    await page.goto('/my/account');
+
+    const card = page.getByRole('region', { name: 'How we reach you' });
+    await expect(card).toContainText('Always sent');
+    // It goes out when the account is created, so a switch could never have
+    // taken effect. A control that does nothing is worse than none.
+    await expect(card.getByRole('checkbox', { name: 'When your account is created' })).toHaveCount(
+      0,
+    );
+  });
+
+  test('turns one kind off and leaves the others alone', async ({ page }) => {
+    await signedIn(page, TRAINER);
+    await page.goto('/my/account');
+    await setPhoneMessages(page, true);
+
+    const card = page.getByRole('region', { name: 'How we reach you' });
+    const claims = card.getByRole('checkbox', {
+      name: 'When an expense claim of yours is decided',
+    });
+    // Clicked rather than unchecked: the switch is server-authoritative, so it
+    // reads "off" once the choice is stored, not the instant it is tapped.
+    // Deliberately not optimistic — a preference that shows a state it has not
+    // saved is the one that gets discovered on the day a message does arrive.
+    await claims.click();
+
+    await expect(claims).not.toBeChecked();
+    await expect(
+      card.getByRole('checkbox', { name: 'When a leave request of yours is approved or rejected' }),
+    ).toBeChecked();
+
+    // Survives a reload, so it was stored rather than only shown.
+    await page.reload();
+    await expect(
+      card.getByRole('checkbox', { name: 'When an expense claim of yours is decided' }),
+    ).not.toBeChecked();
+  });
+
+  test('keeps the choices visible when the channel is off, rather than hiding them', async ({
+    page,
+  }) => {
+    await signedIn(page, TRAINER);
+    await page.goto('/my/account');
+
+    const card = page.getByRole('region', { name: 'How we reach you' });
+    await setPhoneMessages(page, false);
+
+    // Hiding them would leave somebody turning the channel back on with no
+    // idea what they had chosen underneath it.
+    await expect(card).toContainText('Your choices are kept for if you turn them back on');
+    await expect(
+      card.getByRole('checkbox', { name: 'When a leave request of yours is approved or rejected' }),
+    ).toBeDisabled();
+  });
+
+  test('says plainly that these govern the phone and nothing else', async ({ page }) => {
+    await signedIn(page, TRAINER);
+    await page.goto('/my/account');
+
+    const card = page.getByRole('region', { name: 'How we reach you' });
+    await expect(card).toContainText('These govern your phone only');
   });
 });
 

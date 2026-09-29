@@ -5,7 +5,9 @@ import {
   NOTIFICATION_TYPES,
   SMS_MAX_SEGMENTS,
   maskMobile,
-  mobileMessagePurposes,
+  mobileMessageChoices,
+  declinableNotificationTypes,
+  isAlwaysSent,
   mobileTemplateValues,
   normaliseIndianMobile,
   renderMobileTemplate,
@@ -171,10 +173,62 @@ describe('the mobile template catalogue', () => {
     ]);
   });
 
-  it('lists a purpose per template for the preferences screen', () => {
-    const purposes = mobileMessagePurposes();
+  it('says what every template is for, so no switch is unlabelled', () => {
+    const purposes = mobileMessageChoices().flatMap((choice) => choice.purposes);
     expect(purposes).toHaveLength(MOBILE_TEMPLATE_IDS.length);
     expect(purposes.every((purpose) => purpose.length > 0)).toBe(true);
+  });
+});
+
+/**
+ * What somebody can actually choose about.
+ *
+ * The screen offers one switch per *event*, not per template: two templates can
+ * be one concern, and the send point checks a notification type, so the choice
+ * has to be keyed the same way or the two would disagree about what was turned
+ * off.
+ */
+describe('the choices offered on the preferences screen', () => {
+  it('folds the templates that are one concern into one switch', () => {
+    const choices = mobileMessageChoices();
+    // A document about to lapse and one that has lapsed are the same subject
+    // to the person receiving them.
+    const expiry = choices.find((choice) => choice.notificationType === 'document_expiry');
+    expect(expiry?.templates).toEqual(['document_expiring', 'document_expired']);
+    expect(choices.length).toBeLessThan(MOBILE_TEMPLATE_IDS.length);
+  });
+
+  it('covers every template exactly once', () => {
+    // A template in no choice could never be turned off; one in two would be
+    // turned off by a switch somebody did not touch.
+    const covered = mobileMessageChoices().flatMap((choice) => choice.templates);
+    expect([...covered].sort()).toEqual([...MOBILE_TEMPLATE_IDS].sort());
+  });
+
+  it('offers no switch for the message sent before anybody could choose', () => {
+    const account = mobileMessageChoices().find(
+      (choice) => choice.notificationType === 'credentials_issued',
+    );
+    // Listed, so the screen can say it is always sent — but not declinable,
+    // because a switch for it could never take effect.
+    expect(account).toBeDefined();
+    expect(account?.canDecline).toBe(false);
+    expect(declinableNotificationTypes()).not.toContain('credentials_issued');
+  });
+
+  it('lets every other event be declined', () => {
+    const declinable = declinableNotificationTypes();
+    for (const choice of mobileMessageChoices()) {
+      expect(declinable.includes(choice.notificationType), choice.notificationType).toBe(
+        choice.canDecline,
+      );
+    }
+    expect(declinable.length).toBeGreaterThan(0);
+  });
+
+  it('knows which types are always sent', () => {
+    expect(isAlwaysSent('credentials_issued')).toBe(true);
+    expect(isAlwaysSent('leave_decided')).toBe(false);
   });
 });
 

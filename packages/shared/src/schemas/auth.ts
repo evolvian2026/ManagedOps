@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { ROLES } from '../enums.js';
+import { NOTIFICATION_TYPES, ROLES } from '../enums.js';
+import { declinableNotificationTypes } from '../messaging.js';
 import { emailSchema, phoneSchema } from './common.js';
 
 /**
@@ -72,6 +73,22 @@ export const contactPreferencesSchema = z
   .object({
     phone: z.union([phoneSchema, z.literal('')]).optional(),
     mobileNotifications: z.boolean().optional(),
+    /**
+     * The events this person does not want on their phone, in full.
+     *
+     * A whole list rather than one toggle at a time: the screen holds every
+     * switch at once, so sending the resulting set is one round trip and there
+     * is no order in which two quick taps can leave the server disagreeing
+     * with what the person is looking at.
+     *
+     * Only declinable events are accepted. The one that is always sent goes
+     * out before anybody has signed in, so a request to decline it is a
+     * mistake worth naming rather than quietly dropping.
+     */
+    declinedNotificationTypes: z
+      .array(z.enum(declinableNotificationTypes() as [string, ...string[]]))
+      .max(NOTIFICATION_TYPES.length)
+      .optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, 'Nothing to change');

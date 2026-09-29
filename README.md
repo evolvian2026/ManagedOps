@@ -479,10 +479,43 @@ can send one person's leave decision to another's phone.
 holds one row per attempt with the channel, the provider's message id and the
 error — because "did the trainer get the reminder?" is a question that gets
 asked about leave decisions and document deadlines. Not sending is recorded too,
-and the two reasons read differently: a number nobody has is one to collect, an
-opt-out is a choice to respect. Numbers are stored masked; the contact record is
-on the user, and a log queried daily has no reason to hold every mobile number
-in the company.
+and the three reasons read differently, because they call for different action:
+a number nobody has is one to collect, "opted out of messages to their phone" is
+a channel they want nothing on, and "opted out of this kind of message" is a
+channel they want and one event they do not. Numbers are stored masked; the
+contact record is on the user, and a log queried daily has no reason to hold
+every mobile number in the company.
+
+**One switch per event, under one master switch.** This started as a single
+boolean, on the argument that everything we send is something the person needs.
+That holds for whether to use the channel at all; it does not hold event by
+event. Making somebody choose between all of it and none of it is how a channel
+gets switched off whole — taking the document reminders with it, which are the
+ones that cost a trainer site access when missed.
+
+Three judgements shape it:
+
+- **Preferences key on the notification type, not the template.** Seven
+  templates cover six events: a document about to lapse and one that has lapsed
+  are the same subject to the person receiving them, and "tell me it is expiring
+  but not that it has" is not a preference anybody holds. The send point already
+  carries the type, so the choice and the check cannot drift apart.
+- **Refusals are stored, not permissions.** Recording the events somebody has
+  _allowed_ would mean every event added later is silently withheld from
+  everyone who ever opened the screen — a message nobody chose to refuse, never
+  sent, with nothing to notice it by. Each row carries when the choice was made,
+  because "I never got the reminder" is asked months afterwards.
+- **One message cannot be declined.** `credentials_issued` goes out when the
+  account is created, before the person has ever signed in, so a switch for it
+  could never take effect. It is listed on the screen as always sent, with the
+  reason, rather than offered as a control that does nothing — and a CHECK
+  constraint refuses a row declining it, so no future write path can create one
+  the send point would have to ignore.
+
+The switches govern **the phone**. The in-app notification is the record and is
+always written; email is the archive. The phone is the channel that interrupts,
+so it is the one you choose, and the screen says so rather than leaving it to be
+discovered.
 
 **A number is normalised on the way in, and a constraint keeps it that way.**
 `phoneSchema` transforms rather than merely validating, so `+91 98000 01002` and
@@ -628,6 +661,6 @@ Every screen in the specification is implemented; there are no placeholders.
 
 | Suite                             | Count |
 | --------------------------------- | ----- |
-| Shared contracts                  | 279   |
-| API integration (real PostgreSQL) | 777   |
-| Browser (desktop + mobile)        | 175   |
+| Shared contracts                  | 284   |
+| API integration (real PostgreSQL) | 787   |
+| Browser (desktop + mobile)        | 180   |

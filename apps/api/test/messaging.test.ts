@@ -32,6 +32,7 @@ function auth(session: Session) {
 async function makeTrainerUser(options: {
   phone?: string | null;
   mobileNotifications?: boolean;
+  declined?: string[];
 }): Promise<string> {
   const seeded = await harness.seedUser({ role: 'trainer' });
   await harness.prisma.db.user.update({
@@ -41,6 +42,11 @@ async function makeTrainerUser(options: {
       mobileNotifications: options.mobileNotifications ?? true,
     },
   });
+  for (const type of options.declined ?? []) {
+    await harness.prisma.db.notificationOptOut.create({
+      data: { id: newId(), userId: seeded.id, type },
+    });
+  }
   return seeded.id;
 }
 
@@ -218,6 +224,68 @@ describe('when not to send', () => {
     expect(deliveries[0]!.error).toMatch(/no usable mobile number/i);
   });
 
+  it('skips a kind of message somebody has turned off, for a different reason again', async () => {
+    const userId = await makeTrainerUser({ declined: ['leave_decided'] });
+
+    await notifications.notify({
+      userIds: [userId],
+      type: 'leave_decided',
+      title: 'Approved',
+      body: '.',
+      mobile: {
+        template: 'leave_decided',
+        values: { name: 'Sneha', dates: '12 Oct 2026', outcome: 'approved' },
+      },
+    });
+
+    const deliveries = await deliveriesFor(userId);
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0]!.status).toBe('skipped');
+    // "They want the channel but not this" is a different answer from "they
+    // want nothing on their phone", and somebody chasing a missing message
+    // needs to be able to tell which they are looking at.
+    expect(deliveries[0]!.error).toMatch(/this kind of message/i);
+  });
+
+  it('still sends the kinds they have not turned off', async () => {
+    const userId = await makeTrainerUser({ declined: ['reimbursement_decided'] });
+
+    await notifications.notify({
+      userIds: [userId],
+      type: 'leave_decided',
+      title: 'Approved',
+      body: '.',
+      mobile: {
+        template: 'leave_decided',
+        values: { name: 'Sneha', dates: '12 Oct 2026', outcome: 'approved' },
+      },
+    });
+
+    const deliveries = await deliveriesFor(userId);
+    expect(deliveries[0]!.status).toBe('sent');
+  });
+
+  it('still sends the account message to somebody who has declined everything else', async () => {
+    // An account whose credentials message was suppressed is an account nobody
+    // can get into, so it survives every other refusal. The database will not
+    // even hold a row declining it, which the preferences suite asserts; this
+    // is the consequence that matters.
+    const userId = await makeTrainerUser({
+      declined: ['leave_decided', 'reimbursement_decided', 'document_expiry'],
+    });
+
+    await notifications.notify({
+      userIds: [userId],
+      type: 'credentials_issued',
+      title: 'Your account is ready',
+      body: '.',
+      mobile: { template: 'account_ready', values: { name: 'Sneha' } },
+    });
+
+    const deliveries = await deliveriesFor(userId);
+    expect(deliveries[0]!.status).toBe('sent');
+  });
+
   it('sends nothing to a disabled account', async () => {
     const userId = await makeTrainerUser({});
     await harness.prisma.db.user.update({ where: { id: userId }, data: { status: 'disabled' } });
@@ -271,7 +339,11 @@ describe('the contact preferences endpoint', () => {
     expect(response.body.phoneMasked).toBe('+91 ••••••5678');
     expect(response.body.phone).toBe(GOOD_NUMBER);
     expect(response.body.mobileNotifications).toBe(true);
-    expect(response.body.purposes.length).toBeGreaterThan(0);
+    expect(response.body.events.length).toBeGreaterThan(0);
+    // Nothing is declined until somebody declines something.
+    expect(response.body.events.every((event: { declined: boolean }) => !event.declined)).toBe(
+      true,
+    );
   });
 
   it('normalises a number typed any of the ways people type one', async () => {
@@ -331,6 +403,121 @@ describe('the contact preferences endpoint', () => {
 
     const other = await harness.prisma.db.user.findUniqueOrThrow({ where: { id: otherId } });
     expect(other.mobileNotifications).toBe(true);
+  });
+
+  it('turns one kind of message off and leaves the rest alone', async () => {
+    const response = await harness
+      .http()
+      .patch('/api/v1/notifications/preferences')
+      .set(auth(trainerSession))
+      .send({ declinedNotificationTypes: ['reimbursement_decided'] })
+      .expect(200);
+
+    const declined = response.body.events.filter((event: { declined: boolean }) => event.declined);
+    expect(declined).toHaveLength(1);
+    expect(declined[0].notificationType).toBe('reimbursement_decided');
+    // The channel itself is untouched: this is a choice within it, not instead
+    // of it.
+    expect(response.body.mobileNotifications).toBe(true);
+  });
+
+  it('records when the choice was made', async () => {
+    // "I never got the reminder" is asked months later, and the answer is
+    // either a delivery record or this date.
+    await harness
+      .http()
+      .patch('/api/v1/notifications/preferences')
+      .set(auth(trainerSession))
+      .send({ declinedNotificationTypes: ['leave_decided'] })
+      .expect(200);
+
+    const response = await harness
+      .http()
+      .get('/api/v1/notifications/preferences')
+      .set(auth(trainerSession))
+      .expect(200);
+
+    const leave = response.body.events.find(
+      (event: { notificationType: string }) => event.notificationType === 'leave_decided',
+    );
+    expect(leave.declinedAt).not.toBeNull();
+  });
+
+  it('replaces the whole set rather than adding to it', async () => {
+    await harness
+      .http()
+      .patch('/api/v1/notifications/preferences')
+      .set(auth(trainerSession))
+      .send({ declinedNotificationTypes: ['leave_decided', 'reimbursement_decided'] })
+      .expect(200);
+
+    // The screen holds every switch and sends all of them, so this is somebody
+    // turning leave back on — not asking for one more to be added.
+    const response = await harness
+      .http()
+      .patch('/api/v1/notifications/preferences')
+      .set(auth(trainerSession))
+      .send({ declinedNotificationTypes: ['reimbursement_decided'] })
+      .expect(200);
+
+    const declined = response.body.events
+      .filter((event: { declined: boolean }) => event.declined)
+      .map((event: { notificationType: string }) => event.notificationType);
+    expect(declined).toEqual(['reimbursement_decided']);
+  });
+
+  it('turns everything back on when the set is emptied', async () => {
+    await harness
+      .http()
+      .patch('/api/v1/notifications/preferences')
+      .set(auth(trainerSession))
+      .send({ declinedNotificationTypes: ['leave_decided'] })
+      .expect(200);
+
+    const response = await harness
+      .http()
+      .patch('/api/v1/notifications/preferences')
+      .set(auth(trainerSession))
+      .send({ declinedNotificationTypes: [] })
+      .expect(200);
+
+    expect(response.body.events.every((event: { declined: boolean }) => !event.declined)).toBe(
+      true,
+    );
+  });
+
+  it('refuses to decline the message sent before anybody could have chosen', async () => {
+    await harness
+      .http()
+      .patch('/api/v1/notifications/preferences')
+      .set(auth(trainerSession))
+      .send({ declinedNotificationTypes: ['credentials_issued'] })
+      .expect(422);
+  });
+
+  it('will not let the database hold that refusal either', async () => {
+    // The guard above is the one people meet; this is the one that holds when
+    // something writes around it.
+    await expect(
+      harness.prisma.db.notificationOptOut.create({
+        data: { id: newId(), userId: trainerSession.user.id, type: 'credentials_issued' },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('keeps one person’s choices off another person’s phone', async () => {
+    const otherId = await makeTrainerUser({});
+    await harness
+      .http()
+      .patch('/api/v1/notifications/preferences')
+      .set(auth(trainerSession))
+      .send({ declinedNotificationTypes: ['leave_decided'] })
+      .expect(200);
+
+    const theirs = await harness.prisma.db.notificationOptOut.findMany({
+      where: { userId: otherId },
+    });
+    expect(theirs).toHaveLength(0);
   });
 });
 

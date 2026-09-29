@@ -1236,13 +1236,16 @@ matrix marks sensitive now hold a second factor. Two screens then grew the
 action their figures implied: the payroll register hands the month over and
 records that it went, and the margin report opens onto the assignments behind a
 row so an unpriced one can be priced — or written off with a reason, which is a
-distinction the schema could not previously hold.
+distinction the schema could not previously hold. The phone channel then grew a
+switch per event under its master switch, since making somebody choose between
+all of it and none of it is how a channel gets turned off whole, taking the
+document reminders with it.
 
 | Check                                   | Result      |
 | --------------------------------------- | ----------- |
-| Shared contract tests                   | 279 passing |
-| API integration tests (real PostgreSQL) | 777 passing |
-| Browser tests (desktop + mobile)        | 175 passing |
+| Shared contract tests                   | 284 passing |
+| API integration tests (real PostgreSQL) | 787 passing |
+| Browser tests (desktop + mobile)        | 180 passing |
 | Typecheck, formatting, both builds      | Clean       |
 
 Every screen in §9.4 and §9.5 is implemented. There are no placeholders left.

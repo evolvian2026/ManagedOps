@@ -327,9 +327,11 @@ model User {
   mustChangePassword Boolean   @default(true)
   lastLoginAt        DateTime?
 
-  /// Whether operational messages also go to their phone. One switch rather
-  /// than per-event preferences: the six things we send are all things the
-  /// person needs, so the honest choice is this channel or not.
+  /// Whether operational messages go to their phone at all.
+  ///
+  /// The master switch. Off means nothing reaches a phone, whatever the
+  /// per-event choices below say — so somebody who wants to be left alone
+  /// entirely has one thing to turn off rather than six.
   mobileNotifications Boolean @default(true)
 
   /// The TOTP secret, encrypted rather than hashed — verifying a code needs the
@@ -362,6 +364,7 @@ model User {
   notifications      Notification[]
   messageDeliveries  MessageDelivery[]
   payrollExports     PayrollExport[]     @relation("PayrollExporter")
+  declinedMessages   NotificationOptOut[]
   notBilledAssignments Assignment[]      @relation("AssignmentNotBilledBy")
   auditLogs          AuditLog[]
   managedProjects    Project[]           @relation("ProjectManager")
@@ -493,6 +496,34 @@ model AppSetting {
   updatedAt   DateTime @updatedAt
 
   @@map("app_settings")
+}
+
+/// One row per kind of message somebody has asked not to receive on their phone.
+///
+/// Opt-outs rather than opt-ins, deliberately. Storing the events somebody has
+/// *allowed* would mean every event added later is silently withheld from
+/// everyone who ever opened the preferences screen — a message nobody chose to
+/// refuse, not sent, with no way to notice. Storing refusals means a new event
+/// starts out sent, which is also what the master switch already implies.
+///
+/// Keyed by notification type, not by template: two templates can be one
+/// concern, and a document about to lapse and one that has lapsed are the same
+/// subject to the person receiving them.
+model NotificationOptOut {
+  id     String @id
+  userId String
+  /// A `NotificationType`. Stored as text, like Notification.type.
+  type   String
+
+  /// When they chose it. "I never got the reminder" is a question asked months
+  /// later, and the answer is either a delivery record or this date.
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@index([userId])
+  @@map("notification_opt_outs")
 }
 
 model Notification {

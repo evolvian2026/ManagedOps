@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   MOBILE_CHANNELS,
   MOBILE_TEMPLATES,
+  isAlwaysSent,
   maskMobile,
   normaliseIndianMobile,
   type MobileChannel,
@@ -22,6 +23,8 @@ interface Recipient {
   readonly id: string;
   readonly phone: string | null;
   readonly mobileNotifications: boolean;
+  /** The events they have asked not to receive on their phone. */
+  readonly declinedTypes: readonly string[];
 }
 
 /**
@@ -92,6 +95,26 @@ export class MobileMessageService {
       return;
     }
 
+    // A third skip, recorded apart again: this one says the channel is wanted
+    // and this particular event is not, which is the opposite conclusion to
+    // draw from "opted out of messages to their phone" when somebody asks why
+    // a reminder never arrived.
+    //
+    // `isAlwaysSent` is checked here and not only at the write path: the one
+    // event sent before anybody has signed in must go out even if a row
+    // somehow says otherwise.
+    if (
+      !isAlwaysSent(context.notificationType) &&
+      recipient.declinedTypes.includes(context.notificationType)
+    ) {
+      await this.record(recipient, intent, context, MOBILE_CHANNELS[0], {
+        status: 'skipped',
+        toMasked: maskMobile(number),
+        error: 'Opted out of this kind of message',
+      });
+      return;
+    }
+
     // WhatsApp first: it is cheaper, it is where these trainers already are,
     // and it can carry more than 160 characters. SMS is the fallback rather
     // than the default because it costs more and says less — but it arrives on
@@ -122,10 +145,24 @@ export class MobileMessageService {
   private async resolve(userIds: readonly string[]): Promise<Recipient[]> {
     const unique = [...new Set(userIds)].filter(Boolean);
     if (unique.length === 0) return [];
-    return this.prisma.db.user.findMany({
+    const users = await this.prisma.db.user.findMany({
       where: { id: { in: unique }, status: 'active' },
-      select: { id: true, phone: true, mobileNotifications: true },
+      select: {
+        id: true,
+        phone: true,
+        mobileNotifications: true,
+        // In the same pass rather than a query per recipient: a document
+        // reminder run goes out to everybody onboarding at once.
+        declinedMessages: { select: { type: true } },
+      },
     });
+
+    return users.map((user) => ({
+      id: user.id,
+      phone: user.phone,
+      mobileNotifications: user.mobileNotifications,
+      declinedTypes: user.declinedMessages.map((row) => row.type),
+    }));
   }
 
   private async record(

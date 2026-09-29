@@ -135,9 +135,72 @@ export const MOBILE_TEMPLATES = {
 export type MobileTemplateId = keyof typeof MOBILE_TEMPLATES;
 export const MOBILE_TEMPLATE_IDS = Object.keys(MOBILE_TEMPLATES) as MobileTemplateId[];
 
-/** What the preferences screen lists, so nobody has to guess what a toggle turns off. */
-export function mobileMessagePurposes(): string[] {
-  return MOBILE_TEMPLATE_IDS.map((id) => MOBILE_TEMPLATES[id].purpose);
+/**
+ * The one message nobody can decline in advance.
+ *
+ * It is sent once, when the account is created — before the person has ever
+ * signed in, and so before they could have expressed any preference about it.
+ * A switch for it could never take effect, and offering one would be a control
+ * that does nothing: worse than saying plainly that this one always goes.
+ */
+export const ALWAYS_SENT_NOTIFICATION_TYPES = [
+  'credentials_issued',
+] as const satisfies readonly NotificationType[];
+
+export function isAlwaysSent(type: NotificationType): boolean {
+  return (ALWAYS_SENT_NOTIFICATION_TYPES as readonly NotificationType[]).includes(type);
+}
+
+/**
+ * What somebody can actually choose about, one entry per event.
+ *
+ * Keyed by notification type rather than by template, because two templates can
+ * be one concern: a document about to lapse and a document that has lapsed are
+ * the same subject to the person receiving them, and "tell me it is expiring
+ * but not that it has expired" is not a preference anybody holds. The screen
+ * therefore offers six choices over seven templates, and the send point checks
+ * the type it already carries.
+ */
+export interface MobileMessageChoice {
+  readonly notificationType: NotificationType;
+  /** Every template that would be suppressed by declining this one. */
+  readonly templates: readonly MobileTemplateId[];
+  /** What it is for, from the catalogue. The first template's purpose leads. */
+  readonly purposes: readonly string[];
+  /** False for the one that is sent before anybody could have chosen. */
+  readonly canDecline: boolean;
+}
+
+export function mobileMessageChoices(): MobileMessageChoice[] {
+  const byType = new Map<NotificationType, MobileMessageChoice>();
+
+  for (const id of MOBILE_TEMPLATE_IDS) {
+    const template: MobileTemplate = MOBILE_TEMPLATES[id];
+    const existing = byType.get(template.notificationType);
+    if (existing) {
+      byType.set(template.notificationType, {
+        ...existing,
+        templates: [...existing.templates, id],
+        purposes: [...existing.purposes, template.purpose],
+      });
+      continue;
+    }
+    byType.set(template.notificationType, {
+      notificationType: template.notificationType,
+      templates: [id],
+      purposes: [template.purpose],
+      canDecline: !isAlwaysSent(template.notificationType),
+    });
+  }
+
+  return [...byType.values()];
+}
+
+/** The events a message can be declined for — what the API will accept. */
+export function declinableNotificationTypes(): NotificationType[] {
+  return mobileMessageChoices()
+    .filter((choice) => choice.canDecline)
+    .map((choice) => choice.notificationType);
 }
 
 /**

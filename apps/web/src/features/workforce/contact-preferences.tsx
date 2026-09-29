@@ -5,12 +5,23 @@ import { ErrorState, LoadingState } from '../../components/states';
 import { api, errorMessage } from '../../lib/api';
 import { useAuth } from '../auth/auth-context';
 
+interface MessageEvent {
+  notificationType: string;
+  templates: string[];
+  /** What it is for. Two templates can share one event, so this is a list. */
+  purposes: string[];
+  /** False for the message sent before anybody could have chosen about it. */
+  canDecline: boolean;
+  declined: boolean;
+  declinedAt: string | null;
+}
+
 interface ContactPreferences {
   phone: string | null;
   phoneMasked: string | null;
   mobileNotifications: boolean;
-  /** What would be sent there, straight from the message catalogue. */
-  purposes: string[];
+  /** One entry per event, with what it is for and whether it is turned off. */
+  events: MessageEvent[];
 }
 
 function useContactPreferences() {
@@ -23,8 +34,11 @@ function useContactPreferences() {
 function useUpdateContactPreferences() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { phone?: string; mobileNotifications?: boolean }) =>
-      api.patch<ContactPreferences>('/notifications/preferences', body),
+    mutationFn: (body: {
+      phone?: string;
+      mobileNotifications?: boolean;
+      declinedNotificationTypes?: string[];
+    }) => api.patch<ContactPreferences>('/notifications/preferences', body),
     onSuccess: (updated) => {
       client.setQueryData(['contact-preferences'], updated);
     },
@@ -130,16 +144,12 @@ export function ContactPreferences() {
           </div>
 
           {receivesMessages ? (
-            <>
-              <p className="mt-4 text-xs font-semibold tracking-wide text-ink-soft uppercase">
-                What we would send
-              </p>
-              <ul className="mt-2 space-y-1 text-sm text-ink-soft">
-                {current.purposes.map((purpose) => (
-                  <li key={purpose}>· {purpose}</li>
-                ))}
-              </ul>
-            </>
+            <MessageEvents
+              events={current.events}
+              enabled={on}
+              pending={update.isPending}
+              onChange={(declined) => update.mutate({ declinedNotificationTypes: declined })}
+            />
           ) : (
             <p className="mt-4 text-sm text-ink-soft">
               These messages go to trainers about their own work, so nothing is currently sent to
@@ -155,5 +165,102 @@ export function ContactPreferences() {
         ) : null}
       </div>
     </Card>
+  );
+}
+
+/**
+ * One switch per kind of message.
+ *
+ * Switches rather than the flat list this used to be, because the master switch
+ * was the only control and it is too blunt: somebody who does not want a text
+ * about every expense claim had to turn the whole channel off, taking the
+ * document reminders with it — and those are the ones that cost them site
+ * access when missed.
+ *
+ * Rendered from what the server sends, which comes from the same catalogue the
+ * sender reads. An event added later becomes a switch here with nobody
+ * remembering to come back.
+ */
+function MessageEvents({
+  events,
+  enabled,
+  pending,
+  onChange,
+}: {
+  events: MessageEvent[];
+  enabled: boolean;
+  pending: boolean;
+  onChange: (declined: string[]) => void;
+}) {
+  function toggle(type: string, wanted: boolean) {
+    // The whole set, every time: the server replaces what it holds with this,
+    // so two quick taps cannot leave it disagreeing with what is on screen.
+    const declined = events
+      .filter((event) =>
+        event.notificationType === type ? !wanted : event.canDecline && event.declined,
+      )
+      .map((event) => event.notificationType);
+    onChange(declined);
+  }
+
+  return (
+    <div className="mt-4">
+      <p className="text-xs font-semibold tracking-wide text-ink-soft uppercase">
+        What we would send
+      </p>
+      {/* Kept visible rather than hidden when the channel is off: hiding them
+          would leave somebody turning the channel back on with no idea what
+          they had chosen underneath it. */}
+      {!enabled ? (
+        <p className="mt-2 text-sm text-ink-soft">
+          Messages to your phone are off, so none of these are sent. Your choices are kept for if
+          you turn them back on.
+        </p>
+      ) : null}
+
+      <ul className="mt-2 divide-y divide-line border-t border-line">
+        {events.map((event) => (
+          <li
+            key={event.notificationType}
+            className="flex flex-wrap items-start justify-between gap-3 py-2.5"
+          >
+            <div className="min-w-[14rem] flex-1">
+              {event.purposes.map((purpose) => (
+                <p key={purpose} className="text-sm text-ink">
+                  {purpose}
+                </p>
+              ))}
+              {!event.canDecline ? (
+                <p className="mt-0.5 text-xs text-ink-soft">
+                  Always sent — it goes out when your account is created, before you could have
+                  chosen.
+                </p>
+              ) : null}
+            </div>
+
+            {event.canDecline ? (
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={!event.declined}
+                  disabled={pending || !enabled}
+                  aria-label={event.purposes[0]}
+                  onChange={(input) => toggle(event.notificationType, input.target.checked)}
+                />
+                <span className={event.declined ? 'text-ink-faint' : 'text-ink-soft'}>
+                  {event.declined ? 'Off' : 'On'}
+                </span>
+              </label>
+            ) : (
+              <span className="text-sm text-ink-faint">Always on</span>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <p className="mt-3 text-xs text-ink-soft">
+        These govern your phone only. Everything still appears in the app and in your email.
+      </p>
+    </div>
   );
 }
