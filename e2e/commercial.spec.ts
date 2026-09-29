@@ -210,6 +210,49 @@ test.describe('the rate on an assignment', () => {
     await expect(page.getByRole('row', { name: /Sneha Iyer/ })).toContainText('₹7,200');
   });
 
+  test('keeps the keyboard inside the dialog it says is modal', async ({ page }) => {
+    await signIn(page, MANAGER);
+    await openSeededRoster(page);
+
+    const row = page.getByRole('row', { name: /Arjun Desai/ });
+    await row.getByRole('button', { name: /₹|Not billed/ }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    // Focus is moved in, not left behind on the control that opened it.
+    await expect(dialog.locator(':focus')).toHaveCount(1);
+
+    // Round the whole dialog twice over. aria-modal="true" promises the page
+    // behind is unreachable; before the trap, Tab walked straight out into it.
+    for (let press = 0; press < 12; press += 1) {
+      await page.keyboard.press('Tab');
+      await expect(dialog.locator(':focus')).toHaveCount(1);
+    }
+    // And backwards, which wraps at the other end.
+    for (let press = 0; press < 12; press += 1) {
+      await page.keyboard.press('Shift+Tab');
+      await expect(dialog.locator(':focus')).toHaveCount(1);
+    }
+  });
+
+  test('gives the keyboard back to where it came from when it closes', async ({ page }) => {
+    await signIn(page, MANAGER);
+    await openSeededRoster(page);
+
+    const opener = page.getByRole('row', { name: /Arjun Desai/ }).getByRole('button', {
+      name: /₹|Not billed/,
+    });
+    await opener.click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    // Otherwise a keyboard user is dropped at the top of the document and has
+    // to tab all the way back to the row they were working on.
+    await expect(opener).toBeFocused();
+  });
+
   test('says "not billed" rather than nothing where no rate is agreed', async ({ page }) => {
     await signIn(page, MANAGER);
     await openSeededRoster(page);

@@ -72,6 +72,30 @@ const envSchema = z.object({
   TWILIO_SMS_FROM: z.string().optional(),
   TWILIO_WHATSAPP_FROM: z.string().optional(),
 
+  /**
+   * Rate limiting, in two layers, both keyed by client address.
+   *
+   * `RATE_LIMIT_MAX` is a crude flood ceiling that ordinary use never
+   * approaches — it exists so one runaway client cannot saturate the API.
+   *
+   * `AUTH_RATE_LIMIT_MAX` guards the ways in, where the cost is real: every
+   * attempt runs Argon2, so an unthrottled sign-in endpoint is a CPU
+   * exhaustion vector as much as a guessing one. It is deliberately generous
+   * enough for a whole office arriving behind one NAT address at nine in the
+   * morning, because the defence against somebody targeting *one* account is
+   * the per-account lockout, not this. This is what stops the same address
+   * working through a hundred different accounts.
+   *
+   * Both are raised in the test environment, where a suite signs in hundreds
+   * of times a minute from one address. The limiter itself is covered by its
+   * own suite, which boots a second application with tight values.
+   */
+  RATE_LIMIT_ENABLED: booleanish.default('true'),
+  RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().min(1).default(60),
+  RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(600),
+  AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().min(1).default(900),
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(100),
+
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 
@@ -121,6 +145,13 @@ export function loadConfiguration() {
       refreshTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
     },
     cookieSecure: env.COOKIE_SECURE,
+    rateLimit: {
+      enabled: env.RATE_LIMIT_ENABLED,
+      windowSeconds: env.RATE_LIMIT_WINDOW_SECONDS,
+      max: env.RATE_LIMIT_MAX,
+      authWindowSeconds: env.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+      authMax: env.AUTH_RATE_LIMIT_MAX,
+    },
     mfa: { secretKey: env.MFA_SECRET_KEY, enforcement: env.MFA_ENFORCEMENT },
     s3: {
       endpoint: env.S3_ENDPOINT,

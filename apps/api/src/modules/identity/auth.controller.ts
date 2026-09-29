@@ -30,6 +30,7 @@ import {
 import {
   AllowDuringPasswordChange,
   CurrentUser,
+  EntryPoint,
   Public,
   SkipAudit,
   type AuthenticatedUser,
@@ -59,6 +60,7 @@ export class AuthController {
   ) {}
 
   @Post('login')
+  @EntryPoint()
   @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Sign in; returns an access token and sets the refresh cookie' })
@@ -75,6 +77,7 @@ export class AuthController {
   }
 
   @Post('mfa/verify')
+  @EntryPoint()
   @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Finish a sign-in with a code from an authenticator' })
@@ -165,6 +168,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @EntryPoint()
   @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotate the refresh cookie and issue a new access token' })
@@ -195,6 +199,7 @@ export class AuthController {
   }
 
   @Post('change-password')
+  @EntryPoint()
   @ApiBearerAuth()
   @AllowDuringPasswordChange()
   @HttpCode(HttpStatus.OK)
@@ -210,6 +215,7 @@ export class AuthController {
   }
 
   @Post('forgot-password')
+  @EntryPoint()
   @Public()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Send a reset link if the address has an account' })
@@ -220,6 +226,7 @@ export class AuthController {
   }
 
   @Post('reset-password')
+  @EntryPoint()
   @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Set a new password using a reset link' })

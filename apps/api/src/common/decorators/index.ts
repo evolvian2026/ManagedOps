@@ -7,6 +7,7 @@ export const CAPABILITY_KEY = 'managedops:capability';
 export const ALLOW_PASSWORD_CHANGE_KEY = 'managedops:allowDuringPasswordChange';
 export const AUDIT_ACTION_KEY = 'managedops:auditAction';
 export const SKIP_AUDIT_KEY = 'managedops:skipAudit';
+export const ENTRY_POINT_KEY = 'managedops:entryPoint';
 
 /** Reachable without a token — login, refresh, health. */
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
@@ -47,6 +48,20 @@ export const Audited = (entityType: string) => SetMetadata(AUDIT_ACTION_KEY, ent
  * actor-less duplicate.
  */
 export const SkipAudit = () => SetMetadata(SKIP_AUDIT_KEY, true);
+
+/**
+ * A way in, and therefore held to the narrow rate limit as well as the wide one.
+ *
+ * These are the routes where refusing costs real work — an Argon2 hash, a
+ * token mint — and where a caller who is not yet anybody can reach them. The
+ * wide limit alone would let one address try thousands of passwords an hour
+ * while staying comfortably inside a flood ceiling sized for ordinary use.
+ *
+ * Marked per route rather than inferred from `@Public()`: reading `me` is
+ * public in the same sense and costs nothing, and change-password is
+ * authenticated and costs the most of any of them.
+ */
+export const EntryPoint = () => SetMetadata(ENTRY_POINT_KEY, true);
 
 export interface AuthenticatedUser {
   userId: string;

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -278,12 +278,25 @@ export function Tabs<T extends string>({
   );
 }
 
+/** Everything that can hold focus, in the order Tab visits it. */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /**
  * A modal for the short forms this section needs — schedule, screen, offer.
  *
  * `wide` is for the few that hold a table rather than a form: the default width
  * is chosen so a form does not sprawl, and the same width squeezes a row of
  * figures into something nobody can read across.
+ *
+ * `aria-modal` is a promise that the rest of the page is unreachable while this
+ * is open. It used to be a promise this component did not keep — Tab walked
+ * straight out into the page behind, focus never entered the dialog when it
+ * opened, and never came back to the control that opened it. A dialog that
+ * announces itself as modal and then behaves like a floating div is worse than
+ * one that never claimed it, because a screen reader repeats the claim. So:
+ * focus moves in on open, Tab cycles within, Escape closes, and focus returns
+ * to wherever it came from.
  */
 export function Modal({
   open,
@@ -300,13 +313,65 @@ export function Modal({
   wide?: boolean;
   children: ReactNode;
 }) {
+  const panel = useRef<HTMLDivElement>(null);
+  const returnTo = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
+
+    // Remembered before anything moves, so closing puts the person back on the
+    // control they opened this from rather than at the top of the document.
+    returnTo.current = document.activeElement as HTMLElement | null;
+
+    // Into the first thing worth acting on, falling back to the panel itself
+    // so a dialog of pure text is still announced and still scrollable.
+    const first = panel.current?.querySelector<HTMLElement>(FOCUSABLE);
+    (first ?? panel.current)?.focus();
+
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab' || !panel.current) return;
+
+      // Re-read on every press: a dialog's fields appear and disappear as
+      // choices are made, and a list captured on open goes stale immediately.
+      const stops = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+        (node) => node.offsetParent !== null || node === document.activeElement,
+      );
+      if (stops.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const first = stops[0]!;
+      const last = stops[stops.length - 1]!;
+      const active = document.activeElement;
+
+      // Wrapping by hand rather than letting the browser take focus to the
+      // page behind, which is exactly what `aria-modal` says cannot happen.
+      if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!panel.current.contains(active)) {
+        event.preventDefault();
+        first.focus();
+      }
     };
+
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      // Only if focus is still somewhere in here: a dialog that closed because
+      // the person clicked something else must not steal it back.
+      if (!panel.current || panel.current.contains(document.activeElement)) {
+        returnTo.current?.focus?.();
+      }
+    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -314,10 +379,14 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/30 p-4 sm:items-center">
       <div
+        ref={panel}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} rounded-lg border border-line bg-surface shadow-lg`}
+        // Focusable only programmatically: the panel is a fallback target when
+        // it holds nothing else, never a stop on the way round.
+        tabIndex={-1}
+        className={`w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} rounded-lg border border-line bg-surface shadow-lg focus:outline-none`}
       >
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>

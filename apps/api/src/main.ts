@@ -25,8 +25,9 @@ async function bootstrap(): Promise<void> {
     }),
   );
   app.use(cookieParser());
-  // Behind Nginx or Caddy, req.ip must come from X-Forwarded-For or every
-  // rate limit and audit entry records the proxy's address instead.
+  // Behind Caddy, req.ip must come from X-Forwarded-For or the rate limiter
+  // and the audit trail both record the proxy's address — which would put
+  // every caller in the world into one bucket and one audit identity.
   app.set('trust proxy', 1);
 
   app.enableCors({

@@ -577,6 +577,49 @@ distinct ones. The forced path has its own suite, which runs with it on.
 
 ---
 
+## How often one address may ask
+
+Two limits, both keyed by client address, both configurable and both on by
+default. The API is the limiting layer: Caddy forwards the real caller in
+`X-Forwarded-For` and the app reads it through `trust proxy`, so there is one
+place that decides rather than two that can disagree.
+
+**The wide limit** — 600 requests a minute — is a flood ceiling. Ordinary use
+never approaches it; one runaway client does. It is keyed by caller rather than
+by caller-and-route, which the framework does by default: per-route buckets hand
+an attacker the whole budget again for every endpoint they touch, and what is
+being limited here is a caller, not a URL.
+
+**The narrow limit** — 100 attempts per fifteen minutes — applies only to routes
+marked `@EntryPoint()`: sign-in, the second-factor challenge, token refresh,
+password change and both password resets. These are where refusing costs real
+work, because every attempt runs an Argon2 hash. Without it the wide limit would
+happily allow tens of thousands of password guesses an hour.
+
+**Neither is the defence against somebody working on one account.** That is the
+per-account lockout — five failures in fifteen minutes — which counts per user
+and does not care where the attempts come from. Saying which control does what
+matters, because a per-address limit tight enough to stop a targeted attack
+would also stop a thirty-person office arriving behind one NAT address at nine
+in the morning, and an office locked out of its own system is how a security
+control gets switched off. The address limits stop _spraying_: one address
+working through many accounts.
+
+A refusal is a Problem Details document like any other, with `Retry-After` set,
+so a well-behaved client waits instead of hammering until it is let through.
+
+The store is in memory, so two API containers each allow the configured rate.
+That is deliberate: a shared store would put a round trip in front of every
+request to tighten a bound already an order of magnitude above real use. The
+numbers are set with the multiplier in mind.
+
+Development and the test suite raise the limits rather than switching the guard
+off — a limiter disabled everywhere it is exercised is one that first runs in
+production. The limiter has its own suite, which boots a second application with
+tight values and attacks it.
+
+---
+
 ## Errors
 
 Every failure is an RFC 9457 Problem Details document with a stable `type` and a

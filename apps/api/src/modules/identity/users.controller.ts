@@ -11,7 +11,12 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { uuidSchema } from '@managedops/shared';
-import { Audited, CurrentUser, RequireCapability } from '../../common/decorators/index.js';
+import {
+  Audited,
+  CurrentUser,
+  EntryPoint,
+  RequireCapability,
+} from '../../common/decorators/index.js';
 import { validate } from '../../common/pipes/zod-validation.pipe.js';
 import {
   UsersService,
@@ -82,6 +87,7 @@ export class UsersController {
   }
 
   @Post(':id/reset-password')
+  @EntryPoint()
   @RequireCapability('users.manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Issue a new temporary password by email' })

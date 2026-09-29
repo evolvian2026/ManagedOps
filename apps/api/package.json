@@ -33,6 +33,7 @@
     "@nestjs/platform-express": "11.0.5",
     "@nestjs/swagger": "11.0.3",
     "@nestjs/terminus": "11.0.0",
+    "@nestjs/throttler": "^6.7.1",
     "@prisma/client": "6.3.0",
     "argon2": "0.41.1",
     "cookie-parser": "1.4.7",
