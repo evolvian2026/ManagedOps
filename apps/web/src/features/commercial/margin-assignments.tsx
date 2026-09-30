@@ -138,15 +138,19 @@ function AssignmentRow({
             <BillingLabel assignment={assignment} />
           )}
         </Td>
-        <Td className="text-right tabular-nums text-ink-soft">{assignment.billableDays}</Td>
-        <Td className="text-right tabular-nums">
+        <Td className="text-right tabular-nums whitespace-nowrap text-ink-soft">
+          {assignment.billableDays}
+        </Td>
+        <Td className="text-right tabular-nums whitespace-nowrap">
           {assignment.billRatePerDay === null ? (
             <span className="text-xs text-ink-faint">—</span>
           ) : (
             formatInr(assignment.revenue)
           )}
         </Td>
-        <Td className="text-right tabular-nums">
+        {/* Never wrapped: a negative amount that breaks after the minus sign
+            reads as a dash, and this column exists to show a loss. */}
+        <Td className="text-right tabular-nums whitespace-nowrap">
           <span className={assignment.margin < 0 ? 'font-medium text-danger' : 'font-medium'}>
             {formatInr(assignment.margin)}
           </span>
@@ -160,7 +164,11 @@ function AssignmentRow({
 /** The three states, each said in words rather than left as a blank cell. */
 function BillingLabel({ assignment }: { assignment: MarginAssignment }) {
   if (assignment.billing === 'rated') {
-    return <span className="tabular-nums">{formatInr(assignment.billRatePerDay ?? 0)} / day</span>;
+    return (
+      <span className="tabular-nums whitespace-nowrap">
+        {formatInr(assignment.billRatePerDay ?? 0)} / day
+      </span>
+    );
   }
   if (assignment.billing === 'not_billed') {
     return (
