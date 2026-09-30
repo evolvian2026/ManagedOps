@@ -243,10 +243,16 @@ test.describe('the rate on an assignment', () => {
       name: /₹|Not billed/,
     });
     await opener.click();
-    await expect(page.getByRole('dialog')).toBeVisible();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    // Focus has to actually leave the opener first, or "it came back" is true
+    // of a dialog that never took it — which is what this used to assert.
+    await expect(dialog.locator(':focus')).toHaveCount(1);
+    await expect(opener).not.toBeFocused();
 
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(dialog).toBeHidden();
 
     // Otherwise a keyboard user is dropped at the top of the document and has
     // to tab all the way back to the row they were working on.

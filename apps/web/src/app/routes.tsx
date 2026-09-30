@@ -1,30 +1,98 @@
+import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import type { Capability } from '@managedops/shared';
 import { useAuth } from '../features/auth/auth-context';
 import { LoginPage } from '../features/auth/login-page';
 import { ChangePasswordPage } from '../features/auth/change-password-page';
 import { DashboardPage } from '../features/dashboard/dashboard-page';
-import { OnboardingPage } from '../features/onboarding/onboarding-page';
-import { RunningProjectsPage } from '../features/workforce/running-projects';
-import { MyAccountPage } from '../features/auth/my-account-page';
-import { MyProfilePage } from '../features/workforce/my-profile';
-import { MyWorkPage } from '../features/operations/my-work';
-import { MyLeavePage } from '../features/operations/my-leave';
-import { MyReimbursementsPage } from '../features/operations/my-reimbursements';
-import { ApprovalsPage } from '../features/operations/approvals';
-import { FlagsPage } from '../features/operations/flags';
-import { DeboardingPage } from '../features/exit/deboarding';
-import { TalentPoolPage } from '../features/exit/talent-pool';
-import { FindTrainersPage } from '../features/skills/find-trainers';
-import { ClientsPage } from '../features/commercial/clients';
-import { MarginPage } from '../features/commercial/margin';
-import { PayrollRegisterPage } from '../features/payroll/register';
-import { DocumentCompliancePage } from '../features/compliance/documents';
-import { AuditLogPage } from '../features/admin/audit-log';
-import { UsersPage } from '../features/admin/users';
 import { AppShell } from './app-shell';
 import { LoadingState } from '../components/states';
 import { PageHeader } from '../components/ui';
+
+/**
+ * Every screen behind the sign-in, fetched when it is first opened.
+ *
+ * One bundle used to carry the whole product to everybody. A contract trainer
+ * on a phone between two client sites — the person this system was built for —
+ * downloaded the payroll register, the margin report and the recruitment
+ * pipeline in order to punch in.
+ *
+ * The split falls along the permission boundary for free: `RequireCapability`
+ * returns before it renders its child, so a role without the capability never
+ * triggers the import. A trainer's browser is not merely told it cannot open
+ * the payroll register; it never fetches the code for it.
+ *
+ * Login, change-password and the dashboard stay in the entry chunk: everybody
+ * needs the first two before anything else can happen, and everybody lands on
+ * the third immediately after. Deferring those would buy nothing and add a
+ * round trip to the two moments that are already the slowest.
+ */
+const OnboardingPage = lazy(() =>
+  import('../features/onboarding/onboarding-page').then((module) => ({
+    default: module.OnboardingPage,
+  })),
+);
+const RunningProjectsPage = lazy(() =>
+  import('../features/workforce/running-projects').then((module) => ({
+    default: module.RunningProjectsPage,
+  })),
+);
+const MyAccountPage = lazy(() =>
+  import('../features/auth/my-account-page').then((module) => ({ default: module.MyAccountPage })),
+);
+const MyProfilePage = lazy(() =>
+  import('../features/workforce/my-profile').then((module) => ({ default: module.MyProfilePage })),
+);
+const MyWorkPage = lazy(() =>
+  import('../features/operations/my-work').then((module) => ({ default: module.MyWorkPage })),
+);
+const MyLeavePage = lazy(() =>
+  import('../features/operations/my-leave').then((module) => ({ default: module.MyLeavePage })),
+);
+const MyReimbursementsPage = lazy(() =>
+  import('../features/operations/my-reimbursements').then((module) => ({
+    default: module.MyReimbursementsPage,
+  })),
+);
+const ApprovalsPage = lazy(() =>
+  import('../features/operations/approvals').then((module) => ({ default: module.ApprovalsPage })),
+);
+const FlagsPage = lazy(() =>
+  import('../features/operations/flags').then((module) => ({ default: module.FlagsPage })),
+);
+const DeboardingPage = lazy(() =>
+  import('../features/exit/deboarding').then((module) => ({ default: module.DeboardingPage })),
+);
+const TalentPoolPage = lazy(() =>
+  import('../features/exit/talent-pool').then((module) => ({ default: module.TalentPoolPage })),
+);
+const FindTrainersPage = lazy(() =>
+  import('../features/skills/find-trainers').then((module) => ({
+    default: module.FindTrainersPage,
+  })),
+);
+const ClientsPage = lazy(() =>
+  import('../features/commercial/clients').then((module) => ({ default: module.ClientsPage })),
+);
+const MarginPage = lazy(() =>
+  import('../features/commercial/margin').then((module) => ({ default: module.MarginPage })),
+);
+const PayrollRegisterPage = lazy(() =>
+  import('../features/payroll/register').then((module) => ({
+    default: module.PayrollRegisterPage,
+  })),
+);
+const DocumentCompliancePage = lazy(() =>
+  import('../features/compliance/documents').then((module) => ({
+    default: module.DocumentCompliancePage,
+  })),
+);
+const AuditLogPage = lazy(() =>
+  import('../features/admin/audit-log').then((module) => ({ default: module.AuditLogPage })),
+);
+const UsersPage = lazy(() =>
+  import('../features/admin/users').then((module) => ({ default: module.UsersPage })),
+);
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, initialising } = useAuth();
@@ -77,7 +145,18 @@ export function AppRoutes() {
       <Route
         element={
           <RequireAuth>
-            <AppShell />
+            {/* One boundary around the shell rather than one per route: the
+                fallback then appears in the content area with the sidebar
+                already drawn, instead of blanking the whole page. */}
+            <Suspense
+              fallback={
+                <div className="px-4 py-10">
+                  <LoadingState label="Opening" rows={3} />
+                </div>
+              }
+            >
+              <AppShell />
+            </Suspense>
           </RequireAuth>
         }
       >

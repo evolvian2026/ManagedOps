@@ -620,6 +620,34 @@ tight values and attacks it.
 
 ---
 
+## What the browser downloads
+
+Every screen used to ship to everybody in one bundle. A contract trainer on a
+phone between two client sites — the person this system was built for —
+downloaded the payroll register, the margin report and the recruitment pipeline
+in order to punch in.
+
+Routes behind the sign-in are now `lazy()`, and the split falls along the
+permission boundary for free: `RequireCapability` returns before it renders its
+child, so a role without the capability never triggers the import. A trainer's
+browser is not merely told it cannot open the payroll register; it never fetches
+the code for it.
+
+Login, change-password and the dashboard stay in the entry chunk. Everybody
+needs the first two before anything can happen and lands on the third
+immediately after, so deferring them would add a round trip to the two moments
+that are already the slowest.
+
+The libraries are chunked apart from the application. Hashed filenames carry a
+year-long cache header, so an ordinary deploy — which moves our code and not
+React's — costs a returning browser about 170 KB rather than the better part of
+700 KB. That chunking is matched on the module path rather than by package name:
+the string form of Rollup's option missed `react-dom/client`, which is the
+import the application actually makes, and quietly left the largest dependency
+in the entry chunk while reporting a vendor chunk that looked correct.
+
+---
+
 ## Errors
 
 Every failure is an RFC 9457 Problem Details document with a stable `type` and a
