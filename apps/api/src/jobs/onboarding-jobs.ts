@@ -11,8 +11,16 @@ import { NotificationsService } from '../modules/notifications/notifications.ser
  * reminder nudges the trainer, and the 72-hour one escalates to the HR who
  * onboarded them, because by then somebody needs to pick up the phone.
  *
- * `documentReminderStage` records what has already gone out, so a retry of the
- * daily job cannot send the same reminder twice.
+ * `documentReminderStage` records what has already gone out, so an ordinary
+ * retry of the daily job does not send the same reminder twice.
+ *
+ * At-least-once, not exactly-once, and deliberately: the message is sent before
+ * the stage is written, so a process that dies between the two sends again on
+ * the next run. That is the right way round for a reminder — a duplicate nudge
+ * costs somebody five seconds, while the missing one costs them site access —
+ * but it is worth saying rather than claiming a guarantee the code does not
+ * make. Reversing the order to get exactly-once would trade a rare duplicate
+ * for a rare silence, which is the worse failure here.
  */
 @Injectable()
 export class OnboardingJobs {
@@ -92,9 +100,11 @@ export class OnboardingJobs {
    * police verification is not the trainer's problem alone, it is the reason a
    * client turns somebody away at the door.
    *
-   * `expiryReminderStage` records what has gone out, so the daily job cannot
-   * send the same reminder twice; uploading a replacement resets it, so the new
-   * document gets chased in its turn.
+   * `expiryReminderStage` records what has gone out, so an ordinary retry does
+   * not send the same reminder twice; uploading a replacement resets it, so the
+   * new document gets chased in its turn. At-least-once for the same reason as
+   * the chase above: the send precedes the write, and a duplicate is cheaper
+   * than a silence.
    */
   async sendExpiryReminders(now = new Date()): Promise<number> {
     const due = await this.documents.dueForExpiryReminder(now);

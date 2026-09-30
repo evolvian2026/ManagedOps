@@ -130,6 +130,22 @@ export function offerScope(user: AuthenticatedUser, capability: Capability = 'of
 }
 
 /**
+ * Clients the caller may see.
+ *
+ * Every role that holds `clients.read` today is unscoped, so this returns the
+ * empty predicate for all of them and changes nothing. It exists so the client
+ * directory is not the one resource whose service takes a caller and ignores
+ * them — the pattern everywhere else is that the data layer enforces the scope,
+ * which is what makes a wrongly annotated route a smaller mistake than it would
+ * otherwise be. A narrower role granted `clients.read` should widen this
+ * function; today it would silently see everything.
+ */
+export function clientScope(user: AuthenticatedUser, capability: Capability = 'clients.read') {
+  const scope = requireScope(user, capability);
+  return scope === 'all' ? {} : MATCH_NOTHING;
+}
+
+/**
  * Trainers the caller may see.
  *
  * A trainer sees themselves; a project lead sees the people on the project they

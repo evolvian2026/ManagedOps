@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createHarness, resetDatabase, type Harness, type Session } from './harness.js';
 import { NotificationsService } from '../src/modules/notifications/notifications.service.js';
 import { newId } from '../src/common/ids.js';
+import { ALWAYS_SENT_NOTIFICATION_TYPES } from '@managedops/shared';
 
 /**
  * Reaching somebody on their phone.
@@ -503,6 +504,22 @@ describe('the contact preferences endpoint', () => {
         data: { id: newId(), userId: trainerSession.user.id, type: 'credentials_issued' },
       }),
     ).rejects.toThrow();
+  });
+
+  it('has a database constraint that matches the list it mirrors', async () => {
+    // The CHECK names the always-sent types literally, because a constraint
+    // cannot read a TypeScript constant. So this asserts the two agree: adding
+    // a member to ALWAYS_SENT_NOTIFICATION_TYPES without a migration fails
+    // here rather than silently leaving rows the send point then has to ignore.
+    const [constraint] = await harness.prisma.db.$queryRawUnsafe<{ def: string }[]>(
+      `SELECT pg_get_constraintdef(oid) AS def
+         FROM pg_constraint
+        WHERE conname = 'notification_opt_outs_declinable'`,
+    );
+    expect(constraint, 'the constraint is missing entirely').toBeDefined();
+
+    const guarded = [...constraint!.def.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]).sort();
+    expect(guarded).toEqual([...ALWAYS_SENT_NOTIFICATION_TYPES].sort());
   });
 
   it('keeps one person’s choices off another person’s phone', async () => {

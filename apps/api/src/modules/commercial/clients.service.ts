@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { newId } from '../../common/ids.js';
 import { paginate, toPrismaPage } from '../../common/pagination.js';
+import { clientScope, scopedWhere } from '../../common/scope.js';
 import { DomainRuleProblem, NotFoundProblem, ValidationProblem } from '../../common/errors.js';
 import type { AuthenticatedUser } from '../../common/decorators/index.js';
 
@@ -44,7 +45,7 @@ export class ClientsService {
   }
 
   async list(query: ClientQuery, user: AuthenticatedUser) {
-    const where = {
+    const where = scopedWhere(clientScope(user), {
       deletedAt: null,
       ...(query.status ? { status: query.status } : {}),
       ...(query.q
@@ -56,7 +57,7 @@ export class ClientsService {
             ],
           }
         : {}),
-    };
+    });
 
     const page = toPrismaPage(query, SORTABLE, { name: 'asc' });
     const [rows, total] = await Promise.all([
@@ -80,7 +81,7 @@ export class ClientsService {
 
   async get(id: string, user: AuthenticatedUser) {
     const client = await this.prisma.db.client.findFirst({
-      where: { id, deletedAt: null },
+      where: scopedWhere(clientScope(user), { id, deletedAt: null }),
       select: {
         ...LIST_SELECT,
         ...this.rateSelect(user),
@@ -125,7 +126,11 @@ export class ClientsService {
   }
 
   async update(id: string, input: UpdateClientInput, actor: AuthenticatedUser) {
-    const client = await this.prisma.db.client.findFirst({ where: { id, deletedAt: null } });
+    // Scoped on the way in, not just on read: a caller who cannot see a client
+    // must not be able to rename one by knowing its id.
+    const client = await this.prisma.db.client.findFirst({
+      where: scopedWhere(clientScope(actor, 'clients.manage'), { id, deletedAt: null }),
+    });
     if (!client) throw new NotFoundProblem('That client');
 
     if (input.code !== undefined && input.code !== client.code) {
@@ -174,7 +179,7 @@ export class ClientsService {
    */
   async remove(id: string, actor: AuthenticatedUser) {
     const client = await this.prisma.db.client.findFirst({
-      where: { id, deletedAt: null },
+      where: scopedWhere(clientScope(actor, 'clients.manage'), { id, deletedAt: null }),
       include: { _count: { select: { projects: true } } },
     });
     if (!client) throw new NotFoundProblem('That client');

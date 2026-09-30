@@ -37,6 +37,15 @@ export const LEAVE_ESCALATION_HOURS = 24;
 /** Spec 4.2 — a missed interview is archived, never deleted. */
 export const MISSED_INTERVIEW_ARCHIVE_DAYS = 30;
 
+/**
+ * Session lifetimes and the lockout, in one place.
+ *
+ * The first two are the *defaults* the API's environment schema falls back to,
+ * not merely documentation of them: both were declared here and then restated
+ * as literals in the configuration, so the pair could disagree and the one that
+ * governed was not the one a reader would find. A constant that looks
+ * authoritative and governs nothing is worse than no constant.
+ */
 export const ACCESS_TOKEN_TTL = '15m';
 export const REFRESH_TOKEN_TTL_DAYS = 7;
 export const LOGIN_MAX_ATTEMPTS = 5;

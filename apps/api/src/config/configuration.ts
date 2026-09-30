@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ACCESS_TOKEN_TTL, REFRESH_TOKEN_TTL_DAYS } from '@managedops/shared';
 
 /**
  * The environment is parsed once, at boot, through a schema. A missing or
@@ -23,8 +24,11 @@ const envSchema = z.object({
       32,
       'JWT_ACCESS_SECRET must be at least 32 characters — generate with `openssl rand -hex 48`',
     ),
-  JWT_ACCESS_TTL: z.string().default('15m'),
-  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(7),
+  // Defaulted from the shared constants rather than from literals repeated
+  // here: two declarations of one number eventually disagree, and the one that
+  // governs is the one nobody is reading.
+  JWT_ACCESS_TTL: z.string().default(ACCESS_TOKEN_TTL),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(REFRESH_TOKEN_TTL_DAYS),
   COOKIE_SECURE: booleanish.default('false'),
 
   // Encrypts the TOTP secrets at rest. A secret cannot be hashed — verifying a
