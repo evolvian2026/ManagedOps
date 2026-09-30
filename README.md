@@ -733,5 +733,5 @@ Every screen in the specification is implemented; there are no placeholders.
 | Suite                             | Count |
 | --------------------------------- | ----- |
 | Shared contracts                  | 284   |
-| API integration (real PostgreSQL) | 787   |
-| Browser (desktop + mobile)        | 180   |
+| API integration (real PostgreSQL) | 813   |
+| Browser (desktop + mobile)        | 182   |

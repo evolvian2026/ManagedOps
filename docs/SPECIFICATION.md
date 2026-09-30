@@ -1241,11 +1241,22 @@ switch per event under its master switch, since making somebody choose between
 all of it and none of it is how a channel gets turned off whole, taking the
 document reminders with it.
 
+A self-review of the finished build then found eight things worth fixing, and
+all eight were: the API had no rate limiter of any kind; the modal declared
+itself `aria-modal` while letting the keyboard walk out of it; one bundle
+shipped every screen to every user; row scoping was tested hard only for
+recruitment; the client directory took a caller and ignored them; the reminder
+jobs promised exactly-once delivery they did not provide; two token constants
+governed nothing; and one CHECK constraint could drift from the list it
+mirrors. None was a correctness or authorisation bug — the three that mattered
+were a missing control, a false accessibility promise, and a payload sized for
+nobody in particular.
+
 | Check                                   | Result      |
 | --------------------------------------- | ----------- |
 | Shared contract tests                   | 284 passing |
-| API integration tests (real PostgreSQL) | 787 passing |
-| Browser tests (desktop + mobile)        | 180 passing |
+| API integration tests (real PostgreSQL) | 813 passing |
+| Browser tests (desktop + mobile)        | 182 passing |
 | Typecheck, formatting, both builds      | Clean       |
 
 Every screen in §9.4 and §9.5 is implemented. There are no placeholders left.
