@@ -17,8 +17,9 @@
     "test:unit": "pnpm --filter @managedops/api test:unit && pnpm --filter @managedops/shared test",
     "db:migrate": "pnpm --filter @managedops/api db:migrate",
     "db:seed": "pnpm --filter @managedops/api db:seed",
+    "db:studio": "pnpm --filter @managedops/api db:studio",
     "db:seed:fresh": "pnpm --filter @managedops/api db:seed:fresh",
-    "infra:up": "docker compose -f infra/compose/docker-compose.dev.yml up -d",
+    "infra:up": "docker compose -f infra/compose/docker-compose.dev.yml up -d && until docker compose -f infra/compose/docker-compose.dev.yml exec -T postgres pg_isready -U managedops -d managedops >/dev/null 2>&1; do printf '.'; sleep 1; done && echo ' postgres ready'",
     "infra:down": "docker compose -f infra/compose/docker-compose.dev.yml down",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\"",
     "test:e2e": "playwright test --config e2e/playwright.config.ts"

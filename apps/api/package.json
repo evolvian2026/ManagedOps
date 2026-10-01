@@ -13,6 +13,7 @@
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "db:generate": "prisma generate",
+    "db:studio": "prisma studio",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:reset": "prisma migrate reset --force",

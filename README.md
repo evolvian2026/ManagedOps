@@ -61,7 +61,28 @@ export PLAYWRIGHT_CHROMIUM_PATH=/path/to/chrome
 | Object storage console | http://localhost:9001          |
 
 Running Postgres natively instead of in Docker works too — point `DATABASE_URL`
-at it and skip `pnpm infra:up`.
+at it and skip `pnpm infra:up`. That is the quickest way past a Docker problem,
+and nothing in the app needs the containers: MinIO only backs file uploads and
+Mailpit only catches email.
+
+`pnpm infra:up` waits for Postgres to accept connections before it returns, not
+merely for the container to exist. Without that wait the very next command —
+`prisma migrate deploy` — races a database that is still starting and fails with
+"Can't reach database server", which looks like a broken setup rather than a
+slow one.
+
+### Looking at the data
+
+```bash
+pnpm db:studio                 # Prisma Studio on http://localhost:5555
+```
+
+A browser over all 37 tables, with the relations followable. For SQL, the
+database is an ordinary Postgres: `psql postgresql://managedops:managedops@localhost:5432/managedops`.
+
+Rows live in the `postgres-data` Docker volume, which survives
+`pnpm infra:down` and container restarts. `docker compose -f
+infra/compose/docker-compose.dev.yml down -v` is what actually destroys it.
 
 ---
 
